@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chi tiết tài liệu - DocUni</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="../../static/css/student.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans antialiased min-h-screen flex flex-col">
+    
+    <!-- Navbar -->
+    <nav class="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <a href="home.html" class="flex-shrink-0 flex items-center gap-2">
+                        <i class="fas fa-graduation-cap text-brand-600 text-2xl"></i>
+                        <span class="font-bold text-xl text-gray-900 tracking-tight">DocUni</span>
+                    </a>
+                </div>
+                <div class="flex items-center gap-4">
+                    <a href="document_list.html" class="text-sm font-medium text-gray-500 hover:text-brand-600 hidden md:block">Danh sách</a>
+                    <div class="flex items-center gap-2 border-l pl-4 border-gray-200">
+                        <img class="h-8 w-8 rounded-full border border-gray-200" src="https://ui-avatars.com/api/?name=Sinh+Vien&background=0ea5e9&color=fff" alt="User">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        
+        <!-- Breadcrumb -->
+        <nav class="flex mb-6" aria-label="Breadcrumb">
+            <ol class="inline-flex items-center space-x-1 md:space-x-3">
+                <li class="inline-flex items-center">
+                    <a href="home.html" class="inline-flex items-center text-sm font-medium text-gray-700 hover:text-brand-600">
+                        <i class="fas fa-home mr-2"></i> Trang chủ
+                    </a>
+                </li>
+                <li>
+                    <div class="flex items-center">
+                        <i class="fas fa-chevron-right text-gray-400 text-xs mx-1"></i>
+                        <a href="document_list.html?q=IT101" class="text-sm font-medium text-gray-700 hover:text-brand-600 ml-1 md:ml-2">Nhập môn lập trình (IT101)</a>
+                    </div>
+                </li>
+                <li aria-current="page">
+                    <div class="flex items-center">
+                        <i class="fas fa-chevron-right text-gray-400 text-xs mx-1"></i>
+                        <span class="text-sm font-medium text-gray-500 ml-1 md:ml-2" id="docTitleBreadcrumb">Đề thi cuối kỳ Nhập môn lập trình</span>
+                    </div>
+                </li>
+            </ol>
+        </nav>
+
+        <div class="flex flex-col lg:flex-row gap-8">
+            <!-- Left Column: Details & Preview -->
+            <div class="flex-1">
+                <!-- Document Info Header -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex gap-4">
+                            <div class="w-16 h-16 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600 text-3xl shrink-0">
+                                <i class="fas fa-file-word"></i>
+                            </div>
+                            <div>
+                                <h1 class="text-2xl font-bold text-gray-900 mb-2" id="docTitle">Đề thi cuối kỳ Nhập môn lập trình (2022-2023)</h1>
+                                <div class="flex flex-wrap items-center gap-3 text-sm text-gray-500">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Đề thi</span>
+                                    <span><i class="fas fa-calendar-alt mr-1"></i> 1 tuần trước</span>
+                                    <span><i class="fas fa-download mr-1"></i> 2.1k lượt tải</span>
+                                    <span><i class="fas fa-file-alt mr-1"></i> 3.5 MB</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="prose prose-sm max-w-none text-gray-600 mb-6">
+                        <p>Bộ 3 mã đề thi cuối kỳ môn Nhập môn lập trình C/C++ năm học 2022-2023. Bao gồm cả đáp án chi tiết và thang điểm chấm của khoa CNTT.</p>
+                        <p>Lưu ý: Mật khẩu giải nén (nếu có) là mã số sinh viên của người chia sẻ.</p>
+                    </div>
+
+                    <div class="flex flex-wrap gap-4 border-t border-gray-100 pt-6">
+                        <button onclick="handleDownload()" class="bg-brand-600 hover:bg-brand-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center">
+                            <i class="fas fa-download mr-2"></i> Tải xuống phiên bản mới nhất
+                        </button>
+                        <button class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-6 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center">
+                            <i class="fas fa-bookmark mr-2 text-gray-400"></i> Lưu tài liệu
+                        </button>
+                        <button class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center">
+                            <i class="fas fa-share-alt"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Preview Box (Mock) -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+                    <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                        <span class="font-medium text-gray-700 text-sm"><i class="fas fa-eye mr-2"></i> Xem trước tài liệu</span>
+                        <button class="text-gray-500 hover:text-brand-600"><i class="fas fa-expand"></i></button>
+                    </div>
+                    <div class="h-96 bg-gray-100 flex items-center justify-center flex-col text-gray-400">
+                        <i class="fas fa-file-pdf text-6xl mb-4 text-gray-300"></i>
+                        <p>Bản xem trước đang tải...</p>
+                        <p class="text-xs mt-2 text-gray-500">(Giao diện mô phỏng iframe PDF/Word)</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Sidebar (History & Uploader) -->
+            <div class="w-full lg:w-80 flex-shrink-0 space-y-6">
+                <!-- Uploader Info -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                    <h3 class="font-bold text-gray-900 text-base mb-4 border-b border-gray-100 pb-3">Người đăng tải</h3>
+                    <div class="flex items-center">
+                        <img src="https://ui-avatars.com/api/?name=SV&background=random" class="w-12 h-12 rounded-full mr-3" alt="Uploader">
+                        <div>
+                            <h4 class="font-medium text-gray-900">SV_K65</h4>
+                            <p class="text-xs text-gray-500">Sinh viên - Khoa CNTT</p>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex gap-2">
+                        <button class="flex-1 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-md text-xs font-medium transition-colors text-center">Xem hồ sơ</button>
+                        <button class="flex-1 bg-brand-50 hover:bg-brand-100 border border-brand-200 text-brand-700 px-3 py-1.5 rounded-md text-xs font-medium transition-colors text-center">Đóng góp báo cáo</button>
+                    </div>
+                </div>
+
+                <!-- Update History -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                    <h3 class="font-bold text-gray-900 text-base mb-4 border-b border-gray-100 pb-3"><i class="fas fa-history mr-2 text-gray-400"></i> Lịch sử cập nhật</h3>
+                    
+                    <div class="flow-root">
+                        <ul role="list" class="-mb-8">
+                            <!-- Version 2 -->
+                            <li>
+                                <div class="relative pb-8">
+                                    <span class="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200" aria-hidden="true"></span>
+                                    <div class="relative flex space-x-3">
+                                        <div>
+                                            <span class="h-8 w-8 rounded-full bg-brand-100 flex items-center justify-center ring-8 ring-white">
+                                                <i class="fas fa-upload text-brand-600 text-xs"></i>
+                                            </span>
+                                        </div>
+                                        <div class="flex min-w-0 flex-1 justify-between space-x-4 pt-1.5">
+                                            <div>
+                                                <p class="text-sm text-gray-900 font-medium">Phiên bản 2.0 <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Hiện tại</span></p>
+                                                <p class="text-xs text-gray-500 mt-1">Cập nhật thêm đáp án chi tiết cho mã đề 03.</p>
+                                            </div>
+                                            <div class="whitespace-nowrap text-right text-xs text-gray-500">
+                                                <time datetime="2023-12-10">1 tuần trước</time>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <!-- Version 1 -->
+                            <li>
+                                <div class="relative pb-8">
+                                    <div class="relative flex space-x-3">
+                                        <div>
+                                            <span class="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center ring-8 ring-white">
+                                                <i class="fas fa-file text-gray-500 text-xs"></i>
+                                            </span>
+                                        </div>
+                                        <div class="flex min-w-0 flex-1 justify-between space-x-4 pt-1.5">
+                                            <div>
+                                                <p class="text-sm text-gray-900 font-medium">Phiên bản 1.0 <a href="#" class="text-brand-600 ml-2 text-xs font-normal hover:underline">Tải bản này</a></p>
+                                                <p class="text-xs text-gray-500 mt-1">Tải lên lần đầu bản gốc PDF.</p>
+                                            </div>
+                                            <div class="whitespace-nowrap text-right text-xs text-gray-500">
+                                                <time datetime="2023-11-20">1 tháng trước</time>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 mt-auto">
+        <div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+            <p class="text-center text-sm text-gray-500">&copy; 2026 DocUni. All rights reserved.</p>
+        </div>
+    </footer>
+    
+    <!-- Toast Container -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-3 pointer-events-none"></div>
+
+    <script src="../../static/js/student.js"></script>
+    <script>
+        function handleDownload() {
+            if(typeof showToast === 'function') {
+                showToast("Bắt đầu tải xuống tài liệu...", "success");
+            } else {
+                alert("Bắt đầu tải xuống...");
+            }
+        }
+    </script>
+</body>
+</html>
+
