@@ -1,0 +1,25 @@
+# Python Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Reflex & Web Build Cache
+frontend_app/.web/
+.web/
+*.db
+.states/
+
+# Environment Variables & Local configs
+.env
+.env.local
+
+# OS Caches
+.DS_Store
+Thumbs.db
