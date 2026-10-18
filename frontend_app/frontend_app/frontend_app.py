@@ -172,6 +172,22 @@ def index() -> rx.Component:
                     color_scheme="amber",
                     badge_text="Giảng viên",
                 ),
+                feature_card(
+                    "Quản Lý Người Dùng",
+                    "Dành cho Admin: Thêm, sửa, xóa, khóa tài khoản; phân quyền và quản lý vai trò toàn hệ thống.",
+                    "users",
+                    "/admin/users",
+                    color_scheme="red",
+                    badge_text="Admin",
+                ),
+                feature_card(
+                    "Quản Lý Tổ Chức",
+                    "Admin quản lý Khoa, Môn học và Lớp học - Cơ cấu tổ chức học thuật toàn học viện.",
+                    "building",
+                    "/admin/organization",
+                    color_scheme="orange",
+                    badge_text="Admin",
+                ),
                 columns="2",
                 spacing="4",
                 width="100%",
@@ -180,87 +196,66 @@ def index() -> rx.Component:
             width="100%",
             margin_top="4",
         ),
+
+        # Bottom quick links
+        rx.card(
+            rx.hstack(
+                rx.hstack(
+                    rx.icon("log-in", size=18, color="var(--blue-9)"),
+                    rx.vstack(
+                        rx.text("Đăng nhập / Đăng ký tài khoản", size="3", weight="bold", color="slate.12"),
+                        rx.text("Tạo tài khoản mới hoặc đăng nhập để truy cập đầy đủ tính năng", size="2", color="slate.9"),
+                        spacing="0",
+                    ),
+                    align="center",
+                    spacing="3",
+                ),
+                rx.spacer(),
+                rx.hstack(
+                    rx.link(
+                        rx.button("Đăng nhập", color_scheme="blue", variant="solid", size="2"),
+                        href="/login",
+                    ),
+                    rx.link(
+                        rx.button("Đăng ký", color_scheme="gray", variant="surface", size="2"),
+                        href="/register",
+                    ),
+                    spacing="2",
+                ),
+                align="center",
+                width="100%",
+            ),
+            variant="surface",
+            padding="4",
+            bg="var(--blue-2)",
+            border="1px solid var(--blue-5)",
+            width="100%",
+            margin_top="2",
+        ),
+
         spacing="6",
         width="100%",
     )
 
     return student_page_wrapper(content, active_route="/")
 
-def document_list() -> rx.Component:
-    return rx.container(
-        rx.vstack(
-            rx.heading("Danh sách tài liệu", size="7"),
-            rx.text("Lọc theo môn học, khóa..."),
-            rx.hstack(
-                rx.card(
-                    rx.vstack(
-                        rx.heading("Giáo trình CNTT", size="4"),
-                        rx.text("Giáo trình môn Cấu trúc dữ liệu và giải thuật."),
-                        rx.button("Tải xuống"),
-                    )
-                ),
-                rx.card(
-                    rx.vstack(
-                        rx.heading("Đề thi cuối kỳ", size="4"),
-                        rx.text("Đề thi môn Nhập môn lập trình 2023."),
-                        rx.button("Tải xuống"),
-                    )
-                )
-            ),
-            rx.link(rx.button("Quay lại", color_scheme="gray"), href="/"),
-            spacing="5"
-        )
-    )
-
-def user_management() -> rx.Component:
-    return rx.container(
-        rx.vstack(
-            rx.heading("Quản lý người dùng", size="7"),
-            rx.text("Quản trị viên có thể thêm, sửa, xóa, khóa người dùng."),
-            rx.table.root(
-                rx.table.header(
-                    rx.table.row(
-                        rx.table.column_header_cell("Tên"),
-                        rx.table.column_header_cell("Email"),
-                        rx.table.column_header_cell("Vai trò"),
-                    )
-                ),
-                rx.table.body(
-                    rx.table.row(
-                        rx.table.row_header_cell("Admin"),
-                        rx.table.cell("admin@docuni.com"),
-                        rx.table.cell("ADMIN"),
-                    ),
-                    rx.table.row(
-                        rx.table.row_header_cell("Sinh viên A"),
-                        rx.table.cell("sva@docuni.com"),
-                        rx.table.cell("STUDENT"),
-                    ),
-                ),
-            ),
-            rx.link(rx.button("Quay lại", color_scheme="gray"), href="/"),
-            spacing="5"
-        )
-    )
-
 app = rx.App(
     theme=rx.theme(appearance="light", accent_color="blue", radius="large")
 )
 app.add_page(index, route="/", title="Trang chủ - DocUni")
-from frontend_app.student_documents import student_documents_page
-app.add_page(student_documents_page, route="/documents", title="Kho tài liệu môn học - DocUni")
-app.add_page(user_management, route="/admin/users", title="Quản trị người dùng - DocUni")
 
-# ─── Phase 2: Module Đóng Góp Tài Liệu, Theo Dõi Duyệt & Trợ Lý AI (Task 3.1, 3.2, 3.3) ───
+# ─── Student pages ─────────────────────────────────────────────────────────────
+from frontend_app.student_documents import student_documents_page
 from frontend_app.student_upload import student_upload_page
 from frontend_app.student_contributions import student_contributions_page
 from frontend_app.student_ai import student_ai_page
 
+app.add_page(student_documents_page, route="/documents", title="Kho tài liệu môn học - DocUni")
 app.add_page(student_upload_page, route="/student/upload", title="Đóng góp tài liệu - DocUni")
 app.add_page(student_contributions_page, route="/student/contributions", title="Tài liệu đóng góp của tôi - DocUni")
 app.add_page(student_ai_page, route="/student/ai-assistant", title="Trợ lý học tập AI - DocUni")
 
-# ─── Phase 3: Module Giảng Viên - Quản Lý Kho Tài Liệu, Kiểm Duyệt & Dashboard (Task 4.1, 4.2, 4.4) ───
+# ─── Lecturer pages ────────────────────────────────────────────────────────────
 from frontend_app.lecturer_documents import lecturer_documents_page
 from frontend_app.lecturer_approval import lecturer_approval_page
 from frontend_app.lecturer_dashboard import lecturer_dashboard_page
@@ -269,4 +264,15 @@ app.add_page(lecturer_documents_page, route="/lecturer/documents", title="Quản
 app.add_page(lecturer_approval_page, route="/lecturer/approval", title="Kiểm duyệt tài liệu sinh viên - DocUni Giảng viên")
 app.add_page(lecturer_dashboard_page, route="/lecturer/dashboard", title="Bảng điều khiển Giảng viên - DocUni")
 
+# ─── Admin pages ───────────────────────────────────────────────────────────────
+from frontend_app.admin_panel import admin_users_page
+from frontend_app.admin_organization import admin_organization_page
 
+app.add_page(admin_users_page, route="/admin/users", title="Quản trị người dùng - DocUni Admin")
+app.add_page(admin_organization_page, route="/admin/organization", title="Quản lý tổ chức - DocUni Admin")
+
+# ─── Auth pages ────────────────────────────────────────────────────────────────
+from frontend_app.auth import login_page, register_page
+
+app.add_page(login_page, route="/login", title="Đăng nhập - DocUni")
+app.add_page(register_page, route="/register", title="Đăng ký tài khoản - DocUni")
