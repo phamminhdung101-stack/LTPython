@@ -35,10 +35,37 @@ class AuthState(rx.State):
     reg_loading: bool = False
     show_reg_password: bool = False
 
-    # Session (mock – sẽ đồng bộ với Django session cookie)
+    # Session lưu trữ thông tin thực tế từ Django API & PostgreSQL
     is_logged_in: bool = False
+    current_user_id: int = 0
     current_user_name: str = ""
     current_user_role: str = ""
+
+    # --- Role & Route Guards ---
+    def check_auth(self):
+        """Guard bảo vệ: Bắt buộc đăng nhập trước khi xem nội dung."""
+        if not self.is_logged_in:
+            return rx.redirect("/login")
+
+    def check_admin_auth(self):
+        """Guard bảo vệ: Chỉ cho phép quản trị viên (ADMIN)."""
+        if not self.is_logged_in or self.current_user_role != "ADMIN":
+            return rx.redirect("/login")
+
+    def check_lecturer_auth(self):
+        """Guard bảo vệ: Cho phép Giảng viên (LECTURER) hoặc Quản trị viên (ADMIN)."""
+        if not self.is_logged_in or self.current_user_role not in ("LECTURER", "ADMIN"):
+            return rx.redirect("/login")
+
+    def redirect_if_logged_in(self):
+        """Nếu đã đăng nhập mà truy cập /login, điều hướng về trang theo vai trò thực tế."""
+        if self.is_logged_in:
+            if self.current_user_role == "ADMIN":
+                return rx.redirect("/admin/users")
+            elif self.current_user_role == "LECTURER":
+                return rx.redirect("/lecturer/dashboard")
+            else:
+                return rx.redirect("/documents")
 
     # --- Login handlers ---
     def set_login_username(self, v: str):
@@ -53,40 +80,63 @@ class AuthState(rx.State):
         self.show_login_password = not self.show_login_password
 
     def login(self):
-        if not self.login_username.strip():
+        uname = self.login_username.strip()
+        pwd = self.login_password
+        if not uname:
             self.login_error = "Vui lòng nhập tên đăng nhập."
             return
-        if not self.login_password:
+        if not pwd:
             self.login_error = "Vui lòng nhập mật khẩu."
             return
 
-        # Giả lập đăng nhập demo (frontend-only)
-        # Khi kết nối backend, gọi: httpx.post("http://localhost:8000/auth/login/", ...)
-        demo_accounts = {
-            "admin": ("admin123", "ADMIN", "Quản trị viên"),
-            "gv.nguyenan": ("gv123", "LECTURER", "TS. Nguyễn Văn An"),
-            "sv.namle": ("sv123", "STUDENT", "Lê Hoàng Nam"),
-        }
-
-        if self.login_username in demo_accounts:
-            pwd, role, name = demo_accounts[self.login_username]
-            if self.login_password == pwd:
+        # Xác thực trực tiếp qua Django REST API kết nối PostgreSQL thật
+        try:
+            import httpx
+            resp = httpx.post(
+                "http://127.0.0.1:8000/api/auth/login/",
+                json={"username": uname, "password": pwd},
+                timeout=5.0
+            )
+            if resp.status_code == 200:
+                data = resp.json().get("user", {})
                 self.is_logged_in = True
-                self.current_user_name = name
-                self.current_user_role = role
+                self.current_user_id = data.get("user_id", 0)
+                self.current_user_name = data.get("full_name") or uname
+                role_val = data.get("role_name")
+                if not role_val and isinstance(data.get("role"), dict):
+                    role_val = data.get("role", {}).get("role_name")
+                self.current_user_role = str(role_val or "STUDENT").upper()
                 self.login_error = ""
-                return rx.redirect("/")
+
+                # Điều hướng theo vai trò (Role) lấy trực tiếp từ database PostgreSQL
+                if self.current_user_role == "ADMIN":
+                    return rx.redirect("/admin/users")
+                elif self.current_user_role == "LECTURER":
+                    return rx.redirect("/lecturer/dashboard")
+                else:
+                    return rx.redirect("/documents")
+            elif resp.status_code == 401:
+                self.login_error = "Tài khoản hoặc mật khẩu không chính xác."
+                return
             else:
-                self.login_error = "Mật khẩu không đúng. Vui lòng thử lại."
-        else:
-            self.login_error = "Tên đăng nhập không tồn tại trong hệ thống."
+                self.login_error = f"Lỗi xác thực ({resp.status_code}). Vui lòng thử lại."
+                return
+        except Exception:
+            self.login_error = "Không thể kết nối đến máy chủ Django Backend (127.0.0.1:8000). Vui lòng đảm bảo backend đang chạy."
 
     def logout(self):
+        try:
+            import httpx
+            httpx.post("http://127.0.0.1:8000/api/auth/logout/", timeout=2.0)
+        except Exception:
+            pass
         self.is_logged_in = False
+        self.current_user_id = 0
         self.current_user_name = ""
         self.current_user_role = ""
         self.login_username = ""
         self.login_password = ""
+        self.login_error = ""
         return rx.redirect("/login")
 
     # --- Register handlers ---

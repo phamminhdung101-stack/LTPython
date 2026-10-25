@@ -242,7 +242,9 @@ def index() -> rx.Component:
 app = rx.App(
     theme=rx.theme(appearance="light", accent_color="blue", radius="large")
 )
-app.add_page(index, route="/", title="Trang chủ - DocUni")
+from frontend_app.auth import AuthState, login_page, register_page
+
+app.add_page(index, route="/", title="Trang chủ - DocUni", on_load=AuthState.check_auth)
 
 # ─── Student pages ─────────────────────────────────────────────────────────────
 from frontend_app.student_documents import student_documents_page
@@ -250,29 +252,27 @@ from frontend_app.student_upload import student_upload_page
 from frontend_app.student_contributions import student_contributions_page
 from frontend_app.student_ai import student_ai_page
 
-app.add_page(student_documents_page, route="/documents", title="Kho tài liệu môn học - DocUni")
-app.add_page(student_upload_page, route="/student/upload", title="Đóng góp tài liệu - DocUni")
-app.add_page(student_contributions_page, route="/student/contributions", title="Tài liệu đóng góp của tôi - DocUni")
-app.add_page(student_ai_page, route="/student/ai-assistant", title="Trợ lý học tập AI - DocUni")
+app.add_page(student_documents_page, route="/documents", title="Kho tài liệu môn học - DocUni", on_load=AuthState.check_auth)
+app.add_page(student_upload_page, route="/student/upload", title="Đóng góp tài liệu - DocUni", on_load=AuthState.check_auth)
+app.add_page(student_contributions_page, route="/student/contributions", title="Tài liệu đóng góp của tôi - DocUni", on_load=AuthState.check_auth)
+app.add_page(student_ai_page, route="/student/ai-assistant", title="Trợ lý học tập AI - DocUni", on_load=AuthState.check_auth)
 
 # ─── Lecturer pages ────────────────────────────────────────────────────────────
 from frontend_app.lecturer_documents import lecturer_documents_page
 from frontend_app.lecturer_approval import lecturer_approval_page
 from frontend_app.lecturer_dashboard import lecturer_dashboard_page
 
-app.add_page(lecturer_documents_page, route="/lecturer/documents", title="Quản lý kho tài liệu - DocUni Giảng viên")
-app.add_page(lecturer_approval_page, route="/lecturer/approval", title="Kiểm duyệt tài liệu sinh viên - DocUni Giảng viên")
-app.add_page(lecturer_dashboard_page, route="/lecturer/dashboard", title="Bảng điều khiển Giảng viên - DocUni")
+app.add_page(lecturer_documents_page, route="/lecturer/documents", title="Quản lý kho tài liệu - DocUni Giảng viên", on_load=AuthState.check_lecturer_auth)
+app.add_page(lecturer_approval_page, route="/lecturer/approval", title="Kiểm duyệt tài liệu sinh viên - DocUni Giảng viên", on_load=AuthState.check_lecturer_auth)
+app.add_page(lecturer_dashboard_page, route="/lecturer/dashboard", title="Bảng điều khiển Giảng viên - DocUni", on_load=AuthState.check_lecturer_auth)
 
 # ─── Admin pages ───────────────────────────────────────────────────────────────
 from frontend_app.admin_panel import admin_users_page
 from frontend_app.admin_organization import admin_organization_page
 
-app.add_page(admin_users_page, route="/admin/users", title="Quản trị người dùng - DocUni Admin")
-app.add_page(admin_organization_page, route="/admin/organization", title="Quản lý tổ chức - DocUni Admin")
+app.add_page(admin_users_page, route="/admin/users", title="Quản trị người dùng - DocUni Admin", on_load=AuthState.check_admin_auth)
+app.add_page(admin_organization_page, route="/admin/organization", title="Quản lý tổ chức - DocUni Admin", on_load=AuthState.check_admin_auth)
 
 # ─── Auth pages ────────────────────────────────────────────────────────────────
-from frontend_app.auth import login_page, register_page
-
-app.add_page(login_page, route="/login", title="Đăng nhập - DocUni")
+app.add_page(login_page, route="/login", title="Đăng nhập - DocUni", on_load=AuthState.redirect_if_logged_in)
 app.add_page(register_page, route="/register", title="Đăng ký tài khoản - DocUni")

@@ -1,28 +1,23 @@
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import Role, User
 
 
 @admin.register(Role)
 class RoleAdmin(admin.ModelAdmin):
-    list_display = ['role_name']
+    list_display = ['role_id', 'role_name']
+    search_fields = ['role_name']
 
 
 @admin.register(User)
-class UserAdmin(BaseUserAdmin):
-    list_display = ['username', 'full_name', 'email', 'role', 'department', 'is_active']
-    list_filter = ['role', 'department', 'is_active']
-    search_fields = ['username', 'full_name', 'email']
-    ordering = ['username']
+class UserAdmin(admin.ModelAdmin):
+    list_display = ['user_id', 'username', 'full_name', 'role', 'department', 'student_class', 'created_at']
+    list_filter = ['role', 'department']
+    search_fields = ['username', 'full_name']
+    ordering = ['user_id']
+    readonly_fields = ['created_at']
     fieldsets = (
-        (None, {'fields': ('username', 'password')}),
-        ('Thông tin cá nhân', {'fields': ('full_name', 'email')}),
-        ('Phân quyền hệ thống', {'fields': ('role', 'department', 'student_class')}),
-        ('Trạng thái', {'fields': ('is_active', 'is_staff', 'is_superuser')}),
-    )
-    add_fieldsets = (
-        (None, {
-            'classes': ('wide',),
-            'fields': ('username', 'full_name', 'email', 'role', 'department', 'student_class', 'password1', 'password2'),
-        }),
+        ('Thông tin đăng nhập', {'fields': ('username', 'password')}),
+        ('Thông tin cá nhân', {'fields': ('full_name',)}),
+        ('Phân quyền & Đơn vị', {'fields': ('role', 'department', 'student_class')}),
+        ('Thời gian', {'fields': ('created_at',)}),
     )

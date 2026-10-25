@@ -4,6 +4,7 @@ Cung cấp các component dùng chung: Navbar sinh viên, Sidebar giảng viên,
 """
 
 import reflex as rx
+from frontend_app.auth import AuthState
 
 # 1. Navbar Sinh Viên Dùng Chung
 def student_navbar(active_route: str = "") -> rx.Component:
@@ -65,40 +66,70 @@ def student_navbar(active_route: str = "") -> rx.Component:
                 rx.spacer(),
 
                 # Right action & user profile
-                rx.hstack(
-                    rx.link(
-                        rx.button(
-                            rx.icon("user-cog", size=15),
-                            "Cổng Giảng viên",
-                            size="2",
-                            variant="surface",
-                            color_scheme="indigo",
+                rx.cond(
+                    AuthState.is_logged_in,
+                    rx.hstack(
+                        rx.cond(
+                            (AuthState.current_user_role == "LECTURER") | (AuthState.current_user_role == "ADMIN"),
+                            rx.link(
+                                rx.button(
+                                    rx.icon("user-cog", size=15),
+                                    "Cổng Giảng viên",
+                                    size="2",
+                                    variant="surface",
+                                    color_scheme="indigo",
+                                ),
+                                href="/lecturer/dashboard",
+                            ),
                         ),
-                        href="/lecturer/dashboard",
-                    ),
-                    rx.link(
+                        rx.cond(
+                            AuthState.current_user_role == "ADMIN",
+                            rx.link(
+                                rx.button(
+                                    rx.icon("shield", size=15),
+                                    "Admin",
+                                    size="2",
+                                    variant="ghost",
+                                    color_scheme="gray",
+                                ),
+                                href="/admin/users",
+                            ),
+                        ),
+                        rx.hstack(
+                            rx.avatar(fallback="US", size="2", radius="full", color_scheme="blue"),
+                            rx.vstack(
+                                rx.text(AuthState.current_user_name, size="2", weight="bold", color="slate.12"),
+                                rx.badge(AuthState.current_user_role, size="1", color_scheme="blue", variant="surface"),
+                                spacing="0",
+                                align="start",
+                            ),
+                            align="center",
+                            spacing="2",
+                        ),
                         rx.button(
-                            rx.icon("shield", size=15),
-                            "Admin",
+                            rx.icon("log-out", size=15),
+                            "Đăng xuất",
                             size="2",
                             variant="ghost",
-                            color_scheme="gray",
+                            color_scheme="red",
+                            on_click=AuthState.logout,
                         ),
-                        href="/admin/users",
+                        align="center",
+                        spacing="3",
                     ),
-                    rx.link(
-                        rx.button(
-                            rx.icon("log-in", size=15),
-                            "Đăng nhập",
-                            size="2",
-                            variant="solid",
-                            color_scheme="blue",
+                    rx.hstack(
+                        rx.link(
+                            rx.button(
+                                rx.icon("log-in", size=15),
+                                "Đăng nhập",
+                                size="2",
+                                variant="solid",
+                                color_scheme="blue",
+                            ),
+                            href="/login",
                         ),
-                        href="/login",
-                    ),
-                    rx.avatar(fallback="SV", size="2", radius="full", color_scheme="blue"),
-                    align="center",
-                    spacing="3",
+                        align="center",
+                    )
                 ),
                 align="center",
                 justify="between",
@@ -176,9 +207,10 @@ def lecturer_sidebar(current_route: str = "") -> rx.Component:
                 rx.hstack(
                     rx.avatar(fallback="GV", size="2", radius="full", color_scheme="indigo"),
                     rx.vstack(
-                        rx.text("TS. Nguyễn Văn An", size="2", weight="bold", color="slate.12"),
-                        rx.text("Khoa Công nghệ thông tin", size="1", color="slate.10"),
+                        rx.text(AuthState.current_user_name, size="2", weight="bold", color="slate.12"),
+                        rx.badge(AuthState.current_user_role, size="1", color_scheme="indigo", variant="surface"),
                         spacing="0",
+                        align="start",
                     ),
                     align="center",
                     spacing="2",
@@ -228,16 +260,16 @@ def lecturer_sidebar(current_route: str = "") -> rx.Component:
                     href="/admin/users",
                     underline="none",
                 ),
-                rx.link(
+                rx.button(
                     rx.hstack(
-                        rx.icon("log-in", size=15, color="var(--slate-9)"),
-                        rx.text("Đăng nhập / Đăng xuất", size="2", color="slate.10"),
+                        rx.icon("log-out", size=15, color="var(--red-9)"),
+                        rx.text("Đăng xuất", size="2", color="red.10"),
                         align="center",
                         spacing="2",
-                        padding="2",
                     ),
-                    href="/login",
-                    underline="none",
+                    variant="ghost",
+                    on_click=AuthState.logout,
+                    width="100%",
                 ),
                 spacing="1",
                 width="100%",

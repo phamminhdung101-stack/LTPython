@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import List, Optional
 import reflex as rx
 from .common_components import status_badge
+from .auth import AuthState
 
 
 # ─── Dataclass Models ─────────────────────────────────────────────────────────
@@ -780,6 +781,16 @@ def admin_sidebar(current_route: str = "") -> rx.Component:
                         spacing="2", padding="2", align="center",
                     ),
                     href="/lecturer/dashboard", underline="none",
+                ),
+                rx.button(
+                    rx.hstack(
+                        rx.icon("log-out", size=15, color="var(--red-9)"),
+                        rx.text("Đăng xuất", size="2", color="red.10"),
+                        spacing="2", padding="2", align="center",
+                    ),
+                    variant="ghost",
+                    on_click=AuthState.logout,
+                    width="100%",
                 ),
                 spacing="1", width="100%",
             ),

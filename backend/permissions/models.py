@@ -1,7 +1,9 @@
 from django.db import models
+from django.conf import settings
 
 
 class DocumentPermission(models.Model):
+    """Bảng document_permissions trong PostgreSQL"""
     DEPARTMENT = 'DEPARTMENT'
     CLASS = 'CLASS'
     USER = 'USER'
@@ -11,9 +13,11 @@ class DocumentPermission(models.Model):
         (USER, 'Theo người dùng'),
     ]
 
+    permission_id = models.AutoField(primary_key=True)
     document = models.ForeignKey(
         'documents.Document',
         on_delete=models.CASCADE,
+        db_column='document_id',
         related_name='permissions',
     )
     permission_type = models.CharField(max_length=50, choices=PERMISSION_TYPE_CHOICES)
@@ -21,20 +25,26 @@ class DocumentPermission(models.Model):
     department = models.ForeignKey(
         'academics.Department',
         on_delete=models.CASCADE,
+        db_column='department_id',
         null=True,
         blank=True,
+        related_name='document_permissions',
     )
     student_class = models.ForeignKey(
         'academics.Class',
         on_delete=models.CASCADE,
+        db_column='class_id',
         null=True,
         blank=True,
+        related_name='document_permissions',
     )
     user = models.ForeignKey(
-        'accounts.User',
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
+        db_column='user_id',
         null=True,
         blank=True,
+        related_name='document_permissions',
     )
 
     can_view = models.BooleanField(default=True)
@@ -44,6 +54,7 @@ class DocumentPermission(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        managed = False
         db_table = 'document_permissions'
         verbose_name = 'Quyền tài liệu'
         verbose_name_plural = 'Quyền tài liệu'
