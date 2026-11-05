@@ -25,6 +25,7 @@ from academics.api_views import (
 )
 from documents.api_views import (
     DocumentListCreateAPIView,
+    DocumentUploadAPIView,
     DocumentDetailAPIView,
     DocumentApproveAPIView,
     DocumentRejectAPIView,
@@ -60,6 +61,7 @@ api_patterns = [
 
     # Documents
     path('documents/', DocumentListCreateAPIView.as_view(), name='api_documents'),
+    path('documents/upload/', DocumentUploadAPIView.as_view(), name='api_document_upload'),
     path('documents/<int:pk>/', DocumentDetailAPIView.as_view(), name='api_document_detail'),
     path('documents/<int:pk>/approve/', DocumentApproveAPIView.as_view(), name='api_document_approve'),
     path('documents/<int:pk>/reject/', DocumentRejectAPIView.as_view(), name='api_document_reject'),
@@ -76,5 +78,5 @@ urlpatterns = [
     path('api/', include(api_patterns)),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Chú ý bảo mật: Không phục vụ trực tiếp thư mục media qua static URL để chống bypass quyền truy cập.
+# Toàn bộ việc tải file phải đi qua API /api/documents/<pk>/download/ có kiểm tra JWT / RBAC.

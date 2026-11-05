@@ -244,7 +244,7 @@ app = rx.App(
 )
 from frontend_app.auth import AuthState, login_page, register_page
 
-app.add_page(index, route="/", title="Trang chủ - DocUni", on_load=AuthState.check_auth)
+app.add_page(index, route="/", title="Trang chủ - DocUni", on_load=AuthState.redirect_root)
 
 # ─── Student pages ─────────────────────────────────────────────────────────────
 from frontend_app.student_documents import student_documents_page

@@ -112,6 +112,7 @@ SESSION_COOKIE_SAMESITE = 'Lax'
 # Django REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'accounts.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.BasicAuthentication',
     ],
@@ -152,8 +153,9 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 static_dirs = [BASE_DIR.parent / 'frontend' / 'static']
 STATICFILES_DIRS = [d for d in static_dirs if d.exists()]
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR.parent / 'media'
+MEDIA_URL = os.environ.get('MEDIA_URL', '/media/')
+MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT', str(BASE_DIR / 'media')))
+MAX_UPLOAD_SIZE = int(os.environ.get('MAX_UPLOAD_SIZE', 50 * 1024 * 1024))  # Mặc định 50MB
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

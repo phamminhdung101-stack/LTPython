@@ -119,6 +119,10 @@ class User(AbstractBaseUser):
         return self.role_name == Role.STUDENT
 
     @property
+    def class_id(self):
+        return self.student_class_id
+
+    @property
     def is_active(self):
         # Nếu là sinh viên và lớp bị khóa (is_locked=True), tài khoản xem như bị khóa
         if self.is_student and self.student_class and self.student_class.is_locked:

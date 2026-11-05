@@ -19,6 +19,7 @@ from permissions.rest_permissions import (
     IsAdminUserRole,
     IsOwnerOrAdmin,
 )
+from .authentication import generate_jwt_token
 
 
 class HealthCheckAPIView(APIView):
@@ -88,10 +89,12 @@ class LoginAPIView(APIView):
         # Lưu thông tin phiên đăng nhập
         login(request, user)
 
+        token = generate_jwt_token(user)
         user_data = UserSerializer(user).data
         return Response({
             'status': 'success',
             'message': f'Xin chào {user.full_name}, đăng nhập thành công!',
+            'token': token,
             'user': user_data,
         }, status=status.HTTP_200_OK)
 

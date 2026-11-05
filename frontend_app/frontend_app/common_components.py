@@ -249,16 +249,19 @@ def lecturer_sidebar(current_route: str = "") -> rx.Component:
                     href="/",
                     underline="none",
                 ),
-                rx.link(
-                    rx.hstack(
-                        rx.icon("users-round", size=15, color="var(--slate-9)"),
-                        rx.text("Cổng Quản trị Admin", size="2", color="slate.10"),
-                        align="center",
-                        spacing="2",
-                        padding="2",
+                rx.cond(
+                    AuthState.current_user_role == "ADMIN",
+                    rx.link(
+                        rx.hstack(
+                            rx.icon("users-round", size=15, color="var(--slate-9)"),
+                            rx.text("Cổng Quản trị Admin", size="2", color="slate.10"),
+                            align="center",
+                            spacing="2",
+                            padding="2",
+                        ),
+                        href="/admin/users",
+                        underline="none",
                     ),
-                    href="/admin/users",
-                    underline="none",
                 ),
                 rx.button(
                     rx.hstack(

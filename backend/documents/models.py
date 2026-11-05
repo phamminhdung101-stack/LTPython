@@ -130,6 +130,62 @@ class Document(models.Model):
     def latest_version(self):
         return self.versions.order_by('-version_number').first()
 
+    @property
+    def latest_metadata(self):
+        latest = self.latest_version
+        return latest.metadata_dict if latest else {}
+
+    @property
+    def file_name(self):
+        return self.latest_metadata.get('file_name', '')
+
+    @property
+    def original_file_name(self):
+        return self.latest_metadata.get('original_file_name', '')
+
+    @property
+    def file_type(self):
+        return self.latest_metadata.get('file_type', '')
+
+    @property
+    def file_size(self):
+        return self.latest_metadata.get('file_size', 0)
+
+    @property
+    def mime_type(self):
+        return self.latest_metadata.get('mime_type', '')
+
+    @property
+    def object_key(self):
+        latest = self.latest_version
+        return latest.file_path if latest else ''
+
+    @property
+    def storage_provider(self):
+        return self.latest_metadata.get('storage_provider', 'LOCAL')
+
+    @property
+    def department_id(self):
+        if self.subject_id and hasattr(self, 'subject') and self.subject:
+            return getattr(self.subject, 'department_id', None)
+        if self.uploader_id and hasattr(self, 'uploader') and self.uploader:
+            return getattr(self.uploader, 'department_id', None)
+        return None
+
+    @property
+    def class_id(self):
+        if self.uploader_id and hasattr(self, 'uploader') and self.uploader:
+            return getattr(self.uploader, 'class_id', None)
+        return None
+
+    @property
+    def upload_date(self):
+        return self.created_at
+
+    @property
+    def document_status(self):
+        return self.status
+
 
 class DocumentTag(models.Model):
     """Bảng trung gian document_tags trong PostgreSQL"""
@@ -174,6 +230,30 @@ class DocumentVersion(models.Model):
 
     def __str__(self):
         return f'{self.document.title} – v{self.version_number}'
+
+    @property
+    def metadata_dict(self):
+        import json
+        if self.change_summary and self.change_summary.strip().startswith('{'):
+            try:
+                return json.loads(self.change_summary)
+            except Exception:
+                pass
+        filename = (self.file_path or '').split('/')[-1]
+        ext = filename.split('.')[-1].upper() if '.' in filename else ''
+        return {
+            'file_name': filename,
+            'original_file_name': filename,
+            'file_type': ext,
+            'file_size': 0,
+            'mime_type': 'application/octet-stream',
+            'object_key': self.file_path,
+            'storage_provider': 'LOCAL',
+        }
+
+    @property
+    def object_key(self):
+        return self.file_path
 
 
 class DocumentActivityLog(models.Model):
