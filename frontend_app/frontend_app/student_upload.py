@@ -14,53 +14,7 @@ State quản lý:
 import reflex as rx
 from typing import List
 from .common_components import student_page_wrapper
-
-# ─── Dữ liệu Mock chuẩn theo database/schema.sql ────────────────────────────
-
-MOCK_DEPARTMENTS = [
-    {"id": "1", "name": "Khoa Công nghệ thông tin"},
-    {"id": "2", "name": "Khoa Kinh tế"},
-    {"id": "3", "name": "Khoa Ngoại ngữ"},
-    {"id": "4", "name": "Khoa Điều hành bay"},
-]
-
-MOCK_SUBJECTS = {
-    "1": [
-        {"id": "IT101", "name": "IT101 - Nhập môn lập trình"},
-        {"id": "IT202", "name": "IT202 - Cấu trúc dữ liệu & giải thuật"},
-        {"id": "IT305", "name": "IT305 - Cơ sở dữ liệu"},
-        {"id": "IT410", "name": "IT410 - Lập trình Web"},
-        {"id": "IT501", "name": "IT501 - Trí tuệ nhân tạo"},
-    ],
-    "2": [
-        {"id": "ECO101", "name": "ECO101 - Kinh tế vi mô"},
-        {"id": "ECO202", "name": "ECO202 - Kinh tế vĩ mô"},
-        {"id": "ACC301", "name": "ACC301 - Kế toán tài chính"},
-    ],
-    "3": [
-        {"id": "ENG101", "name": "ENG101 - Tiếng Anh cơ bản"},
-        {"id": "ENG201", "name": "ENG201 - Tiếng Anh chuyên ngành"},
-    ],
-    "4": [
-        {"id": "ATC101", "name": "ATC101 - Điều hành bay cơ bản"},
-        {"id": "ATC202", "name": "ATC202 - Radar & Thủ tục"},
-    ],
-}
-
-MOCK_FOLDERS = {
-    "IT101": ["Slide bài giảng", "Bài tập thực hành", "Đề thi & Đáp án", "Tài liệu tham khảo"],
-    "IT202": ["Giáo trình", "Slide bài giảng", "Bài tập lớn", "Đề thi & Đáp án"],
-    "IT305": ["Slide bài giảng", "Script SQL", "Đồ án", "Đề thi & Đáp án"],
-    "IT410": ["HTML/CSS/JS", "Backend Python", "Đồ án Web", "Tài liệu tham khảo"],
-    "IT501": ["Lý thuyết AI", "Machine Learning Labs", "Deep Learning", "Đề thi & Đáp án"],
-    "ECO101": ["Slide bài giảng", "Bài tập kinh tế", "Đề thi & Đáp án"],
-    "ECO202": ["Slide bài giảng", "Nghiên cứu tình huống", "Đề thi & Đáp án"],
-    "ACC301": ["Giáo trình", "Bài tập kế toán", "Báo cáo thực hành"],
-    "ENG101": ["Slide bài giảng", "Tài liệu đọc", "Bài kiểm tra"],
-    "ENG201": ["Tài liệu chuyên ngành", "Bài viết mẫu", "Đề thi & Đáp án"],
-    "ATC101": ["Slide bài giảng", "Manual Bay", "Bài kiểm tra"],
-    "ATC202": ["Radar Charts", "Thủ tục bay", "Đề thi & Đáp án"],
-}
+from .auth import AuthState
 
 DOC_TYPES = [
     {"value": "SLIDE", "label": "Slide Bài giảng", "icon": "presentation"},
@@ -77,7 +31,13 @@ SUGGESTED_TAGS = ["python", "java", "csdl", "sql", "toán rời rạc", "mạng 
 # ─── State ───────────────────────────────────────────────────────────────────
 
 class UploadState(rx.State):
-    """Quản lý toàn bộ logic trang Đóng góp tài liệu."""
+    """Quản lý toàn bộ logic trang Đóng góp tài liệu kết nối PostgreSQL."""
+
+    # Options fetched from PostgreSQL database
+    departments: List[dict] = []
+    subjects: List[dict] = []
+    folders: List[dict] = []
+    is_loading: bool = False
 
     # Form fields
     title: str = ""
@@ -103,21 +63,78 @@ class UploadState(rx.State):
     submit_success: bool = False
     error_message: str = ""
 
+    async def fetch_upload_options(self):
+        """Tải danh sách Khoa, Môn học và Thư mục thực tế từ PostgreSQL qua Django API."""
+        self.is_loading = True
+        self.error_message = ""
+        try:
+            auth = await self.get_state(AuthState)
+            headers = {}
+            if auth.auth_token:
+                headers["Authorization"] = f"Bearer {auth.auth_token}"
+
+            import httpx
+            async with httpx.AsyncClient() as client:
+                # 1. Tải danh sách Khoa
+                d_resp = await client.get("http://127.0.0.1:8000/api/departments/", headers=headers, timeout=10.0)
+                if d_resp.status_code == 200:
+                    d_data = d_resp.json()
+                    self.departments = [
+                        {"id": str(d.get("department_id")), "name": d.get("department_name")}
+                        for d in d_data.get("departments", [])
+                    ]
+
+                # 2. Tải danh sách Môn học
+                s_resp = await client.get("http://127.0.0.1:8000/api/subjects/", headers=headers, timeout=10.0)
+                if s_resp.status_code == 200:
+                    s_data = s_resp.json()
+                    raw_subjs = s_data.get("subjects", [])
+                    self.subjects = [
+                        {
+                            "id": str(s.get("subject_id")),
+                            "name": f"{s.get('subject_name')} (ID #{s.get('subject_id')})",
+                            "dept_id": str((s.get("department") or {}).get("department_id", "") if isinstance(s.get("department"), dict) else s.get("department_id", "")),
+                        }
+                        for s in raw_subjs
+                    ]
+
+                # 3. Tải danh sách Thư mục
+                f_resp = await client.get("http://127.0.0.1:8000/api/folders/", headers=headers, timeout=10.0)
+                if f_resp.status_code == 200:
+                    f_data = f_resp.json()
+                    self.folders = [
+                        {
+                            "id": str(f.get("folder_id")),
+                            "name": f.get("folder_name"),
+                            "subject_id": str(f.get("subject_id", "")),
+                        }
+                        for f in f_data.get("folders", [])
+                    ]
+        except Exception as e:
+            self.error_message = f"Lỗi tải danh mục từ cơ sở dữ liệu: {str(e)}"
+        finally:
+            self.is_loading = False
+
     @rx.var
     def available_subjects(self) -> List[dict]:
         if not self.selected_dept_id:
-            return []
-        return MOCK_SUBJECTS.get(self.selected_dept_id, [])
+            return self.subjects
+        return [s for s in self.subjects if s.get("dept_id") == self.selected_dept_id]
 
     @rx.var
     def available_folders(self) -> List[str]:
         if not self.selected_subject_id:
-            return []
-        return MOCK_FOLDERS.get(self.selected_subject_id, [])
+            # Lấy tất cả tên folder độc nhất
+            names = list({f["name"] for f in self.folders if f.get("name")})
+            return names if names else ["Tài liệu chung", "Slide bài giảng", "Giáo trình", "Đề thi & Đáp án"]
+        matching = [f["name"] for f in self.folders if f.get("subject_id") == self.selected_subject_id]
+        if not matching:
+            return ["Tài liệu chung", "Slide bài giảng", "Giáo trình", "Đề thi & Đáp án"]
+        return matching
 
     @rx.var
     def dept_options(self) -> List[dict]:
-        return MOCK_DEPARTMENTS
+        return self.departments
 
     @rx.var
     def is_form_valid(self) -> bool:
@@ -125,8 +142,6 @@ class UploadState(rx.State):
             len(self.title.strip()) >= 3
             and self.selected_dept_id != ""
             and self.selected_subject_id != ""
-            and self.selected_folder != ""
-            and self.uploaded_filename != ""
         )
 
     @rx.var
@@ -169,18 +184,36 @@ class UploadState(rx.State):
     def set_new_folder_name(self, value: str):
         self.new_folder_name = value
 
-    def confirm_new_folder(self):
+    async def confirm_new_folder(self):
         name = self.new_folder_name.strip()
-        if not name:
-            return
-        subject_id = self.selected_subject_id
-        if subject_id and subject_id in MOCK_FOLDERS:
-            if name not in MOCK_FOLDERS[subject_id]:
-                MOCK_FOLDERS[subject_id].append(name)
-            self.selected_folder = name
-        self.show_new_folder_input = False
-        self.new_folder_name = ""
-        return rx.toast.success(f"Đã tạo thư mục mới: {name}")
+        if not name or not self.selected_subject_id:
+            return rx.toast.error("Vui lòng chọn môn học và nhập tên thư mục!")
+        try:
+            auth = await self.get_state(AuthState)
+            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+            import httpx
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    "http://127.0.0.1:8000/api/folders/",
+                    headers=headers,
+                    json={"folder_name": name, "subject_id": int(self.selected_subject_id)},
+                    timeout=10.0,
+                )
+                if resp.status_code in (200, 201):
+                    new_f = resp.json().get("folder", {})
+                    self.folders.append({
+                        "id": str(new_f.get("folder_id", "")),
+                        "name": new_f.get("folder_name", name),
+                        "subject_id": str(self.selected_subject_id),
+                    })
+                    self.selected_folder = name
+                    self.show_new_folder_input = False
+                    self.new_folder_name = ""
+                    return rx.toast.success(f"Đã lưu thư mục mới vào database: {name}")
+                else:
+                    return rx.toast.error("Không thể tạo thư mục. Vui lòng kiểm tra quyền truy cập.")
+        except Exception as e:
+            return rx.toast.error(f"Lỗi: {str(e)}")
 
     def set_tag_input(self, value: str):
         self.tag_input = value
@@ -202,8 +235,7 @@ class UploadState(rx.State):
         if files:
             f = files[0]
             self.uploaded_filename = f.filename
-            # Simulate size
-            self.uploaded_filesize = "Tệp đã chọn"
+            self.uploaded_filesize = "Tệp đã sẵn sàng"
             self.error_message = ""
 
     def clear_file(self):
@@ -211,14 +243,82 @@ class UploadState(rx.State):
         self.uploaded_filesize = ""
 
     async def submit_contribution(self, files: list[rx.UploadFile] = None):
-        if files:
-            self.uploaded_filename = files[0].filename
-        if not self.title.strip() or not self.selected_dept_id or not self.selected_subject_id or not self.selected_folder:
-            self.error_message = "Vui lòng điền đầy đủ thông tin bắt buộc: Tiêu đề, Khoa, Môn học, Thư mục."
-            return
-        self.is_submitting = False
-        self.submit_success = True
-        return rx.toast.success("Tài liệu đã được gửi thành công! Đang chờ kiểm duyệt từ giảng viên.")
+        if not self.title.strip() or not self.selected_dept_id or not self.selected_subject_id:
+            self.error_message = "Vui lòng điền đầy đủ: Tiêu đề, Khoa, Môn học."
+            return rx.toast.error(self.error_message)
+
+        self.is_submitting = True
+        self.error_message = ""
+
+        try:
+            auth = await self.get_state(AuthState)
+            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+
+            import httpx
+            # Tìm folder_id nếu có
+            matched_folder = next((f for f in self.folders if f["name"] == self.selected_folder), None)
+            folder_id = matched_folder["id"] if matched_folder else None
+
+            # Ghép tags vào title hoặc description
+            desc = self.description.strip()
+            if self.tags:
+                desc = f"{desc}\nTags: {', '.join(self.tags)}" if desc else f"Tags: {', '.join(self.tags)}"
+
+            async with httpx.AsyncClient() as client:
+                if files and len(files) > 0:
+                    # Upload thực tế kèm file vật lý
+                    file_obj = files[0]
+                    file_bytes = await file_obj.read()
+                    data = {
+                        "title": self.title.strip(),
+                        "description": desc,
+                        "subject_id": str(self.selected_subject_id),
+                        "is_public": "true" if self.is_public else "false",
+                    }
+                    if folder_id:
+                        data["folder_id"] = str(folder_id)
+
+                    upload_files = {
+                        "file": (file_obj.filename, file_bytes, "application/octet-stream")
+                    }
+                    resp = await client.post(
+                        "http://127.0.0.1:8000/api/documents/upload/",
+                        headers=headers,
+                        data=data,
+                        files=upload_files,
+                        timeout=30.0,
+                    )
+                else:
+                    # Tạo document metadata lưu vào PostgreSQL
+                    payload = {
+                        "title": self.title.strip(),
+                        "description": desc,
+                        "subject_id": int(self.selected_subject_id),
+                        "is_public": self.is_public,
+                    }
+                    if folder_id and str(folder_id).isdigit():
+                        payload["folder_id"] = int(folder_id)
+
+                    resp = await client.post(
+                        "http://127.0.0.1:8000/api/documents/",
+                        headers=headers,
+                        json=payload,
+                        timeout=15.0,
+                    )
+
+                if resp.status_code in (200, 201):
+                    self.submit_success = True
+                    return rx.toast.success("Tài liệu đã được lưu vào cơ sở dữ liệu PostgreSQL! Đang chờ giảng viên kiểm duyệt.")
+                else:
+                    err = resp.json().get("message", f"Lỗi HTTP {resp.status_code}")
+                    self.error_message = f"Gửi tài liệu thất bại: {err}"
+                    return rx.toast.error(self.error_message)
+
+        except Exception as e:
+            self.error_message = f"Lỗi kết nối cơ sở dữ liệu: {str(e)}"
+            return rx.toast.error(self.error_message)
+        finally:
+            self.is_submitting = False
 
     def reset_form(self):
         self.title = ""

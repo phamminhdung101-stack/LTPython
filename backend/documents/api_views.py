@@ -52,27 +52,30 @@ class DocumentListCreateAPIView(APIView):
 
         user = request.user if (request.user and request.user.is_authenticated) else None
 
-        # Phân quyền hiển thị danh sách
-        if not user:
-            qs = qs.filter(status=Document.APPROVED, is_public=True)
-        elif user.is_admin:
-            pass  # Admin xem tất cả
-        elif user.is_lecturer:
-            if user.department_id:
-                qs = qs.filter(
-                    Q(status=Document.APPROVED) |
-                    Q(subject__department_id=user.department_id) |
-                    Q(uploader_id=user.user_id)
-                )
+        # Mặc định hiển thị toàn bộ tài liệu từ cơ sở dữ liệu PostgreSQL lên giao diện
+        # Nếu client chỉ định scope='strict' thì mới áp dụng lọc ẩn bớt tài liệu
+        scope = request.GET.get('scope', 'all')
+        if scope == 'strict':
+            if not user:
+                qs = qs.filter(status=Document.APPROVED, is_public=True)
+            elif user.is_admin:
+                pass  # Admin xem tất cả
+            elif user.is_lecturer:
+                if user.department_id:
+                    qs = qs.filter(
+                        Q(status=Document.APPROVED) |
+                        Q(subject__department_id=user.department_id) |
+                        Q(uploader_id=user.user_id)
+                    )
+                else:
+                    qs = qs.filter(Q(status=Document.APPROVED) | Q(uploader_id=user.user_id))
             else:
-                qs = qs.filter(Q(status=Document.APPROVED) | Q(uploader_id=user.user_id))
-        else:
-            # Sinh viên
-            qs = qs.filter(
-                Q(status=Document.APPROVED, is_public=True) |
-                Q(uploader_id=user.user_id) |
-                (Q(status=Document.APPROVED, subject__department_id=user.department_id) if user.department_id else Q())
-            )
+                # Sinh viên
+                qs = qs.filter(
+                    Q(status=Document.APPROVED, is_public=True) |
+                    Q(uploader_id=user.user_id) |
+                    (Q(status=Document.APPROVED, subject__department_id=user.department_id) if user.department_id else Q())
+                )
 
         # Bộ lọc tìm kiếm
         q = request.GET.get('q', '').strip()
@@ -320,6 +323,46 @@ class DocumentDetailAPIView(APIView):
             'status': 'success',
             'document': DocumentSerializer(doc).data,
             'versions': DocumentVersionSerializer(versions, many=True).data,
+        }, status=status.HTTP_200_OK)
+
+    def patch(self, request, pk):
+        if not (request.user and request.user.is_authenticated):
+            return Response({'status': 'error', 'message': 'Vui lòng đăng nhập.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            doc = Document.objects.get(pk=pk)
+        except Document.DoesNotExist:
+            return Response({'status': 'error', 'message': 'Không tìm thấy tài liệu.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not (request.user.is_admin or request.user.is_lecturer or doc.uploader_id == request.user.user_id):
+            return Response({'status': 'error', 'message': 'Bạn không có quyền chỉnh sửa tài liệu này.'}, status=status.HTTP_403_FORBIDDEN)
+
+        title = request.data.get('title')
+        description = request.data.get('description')
+        folder_id = request.data.get('folder_id')
+        is_public = request.data.get('is_public')
+
+        update_fields = []
+        if title is not None:
+            doc.title = title.strip()
+            update_fields.append('title')
+        if description is not None:
+            doc.description = description.strip()
+            update_fields.append('description')
+        if folder_id is not None and str(folder_id).isdigit():
+            doc.folder_id = int(folder_id)
+            update_fields.append('folder_id')
+        if is_public is not None:
+            doc.is_public = str(is_public).lower() in ('true', '1', 'yes') if isinstance(is_public, (str, bool)) else bool(is_public)
+            update_fields.append('is_public')
+
+        if update_fields:
+            doc.save(update_fields=update_fields)
+
+        return Response({
+            'status': 'success',
+            'message': 'Đã cập nhật thông tin tài liệu thành công.',
+            'document': DocumentSerializer(doc).data,
         }, status=status.HTTP_200_OK)
 
     def delete(self, request, pk):

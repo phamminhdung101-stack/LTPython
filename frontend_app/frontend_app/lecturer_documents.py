@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 import reflex as rx
 from .common_components import lecturer_page_wrapper
+from .auth import AuthState
 
 
 # ─── Dataclass Models ────────────────────────────────────────────────────────
@@ -62,159 +63,18 @@ class LecturerDoc:
     permissions: List[DocPermission] = dataclasses.field(default_factory=list)
 
 
-# ─── Initial Mock Data ───────────────────────────────────────────────────────
-
-MOCK_LECTURER_DOCS = [
-    LecturerDoc(
-        id="ld1",
-        title="Giáo trình Cấu trúc dữ liệu và giải thuật 2026",
-        subject_code="IT202",
-        subject_name="Cấu trúc dữ liệu & GT",
-        faculty="CNTT",
-        folder_name="Giáo trình chính thức",
-        doc_type="TEXTBOOK",
-        type_label="Giáo trình",
-        type_color="blue",
-        current_version="v2.1",
-        file_name="GiaoTrinh_CTDL_GT_2026.pdf",
-        file_size="15.8 MB",
-        downloads=1240,
-        views=3150,
-        is_public=True,
-        permission_summary="Công khai toàn trường",
-        updated_at="2026-10-12 14:30",
-        description="Giáo trình cập nhật cấu trúc cây nhị phân, thuật toán đồ thị Dijkstra và bảng băm.",
-        tags=["ctdl", "python", "giai-thuat"],
-        versions=[
-            DocVersion("v2.1", "GiaoTrinh_CTDL_GT_2026.pdf", "Cập nhật bài tập cây AVL và Đồ thị", "2026-10-12 14:30", "15.8 MB"),
-            DocVersion("v2.0", "GiaoTrinh_CTDL_GT_v2.pdf", "Tái cấu trúc chương 4 cây nhị phân", "2026-09-01 09:15", "14.2 MB"),
-            DocVersion("v1.0", "GiaoTrinh_CTDL_GT_v1.pdf", "Bản phát hành đầu tiên", "2026-01-15 10:00", "12.0 MB"),
-        ],
-        permissions=[
-            DocPermission("p1", "PUBLIC", "Toàn bộ sinh viên học viện", True, True, False),
-        ],
-    ),
-    LecturerDoc(
-        id="ld2",
-        title="Bộ Slide Bài giảng: Cơ sở dữ liệu nâng cao",
-        subject_code="IT305",
-        subject_name="Cơ sở dữ liệu",
-        faculty="CNTT",
-        folder_name="Slide Bài giảng",
-        doc_type="SLIDE",
-        type_label="Slide Bài giảng",
-        type_color="orange",
-        current_version="v1.2",
-        file_name="Slide_CSDL_Chuong1_8.pptx",
-        file_size="28.4 MB",
-        downloads=890,
-        views=2100,
-        is_public=False,
-        permission_summary="Khoa CNTT (Lớp D21CQCN01-B)",
-        updated_at="2026-10-10 16:20",
-        description="Tổng hợp slide bài giảng chuẩn hóa 3NF, BCNF, Stored Procedures và Indexing.",
-        tags=["csdl", "sql", "slide"],
-        versions=[
-            DocVersion("v1.2", "Slide_CSDL_Chuong1_8.pptx", "Bổ sung ví dụ Transaction và ACID", "2026-10-10 16:20", "28.4 MB"),
-            DocVersion("v1.0", "Slide_CSDL_v1.pptx", "Slide cơ bản", "2026-08-20 08:30", "24.0 MB"),
-        ],
-        permissions=[
-            DocPermission("p2", "CLASS", "Lớp D21CQCN01-B", True, True, False),
-            DocPermission("p3", "DEPARTMENT", "Bộ môn Hệ thống thông tin", True, True, True),
-        ],
-    ),
-    LecturerDoc(
-        id="ld3",
-        title="Đề thi cuối kỳ Nhập môn lập trình (Kèm Đáp án)",
-        subject_code="IT101",
-        subject_name="Nhập môn lập trình",
-        faculty="CNTT",
-        folder_name="Đề thi & Đáp án",
-        doc_type="EXAM",
-        type_label="Đề thi & Đáp án",
-        type_color="red",
-        current_version="v1.0",
-        file_name="IT101_DeThi_HocKy1_2025.pdf",
-        file_size="4.2 MB",
-        downloads=1650,
-        views=4200,
-        is_public=True,
-        permission_summary="Công khai toàn trường",
-        updated_at="2026-10-05 11:10",
-        description="Đề thi 4 mã đề kèm đáp án thang điểm chi tiết cho sinh viên khóa 2024-2025.",
-        tags=["de-thi", "it101", "python"],
-        versions=[
-            DocVersion("v1.0", "IT101_DeThi_HocKy1_2025.pdf", "Bản chính thức", "2026-10-05 11:10", "4.2 MB"),
-        ],
-        permissions=[
-            DocPermission("p4", "PUBLIC", "Toàn trường", True, True, False),
-        ],
-    ),
-    LecturerDoc(
-        id="ld4",
-        title="Bài tập lớn Lập trình Web Full-Stack với Python & Reflex",
-        subject_code="IT410",
-        subject_name="Lập trình Web",
-        faculty="CNTT",
-        folder_name="Bài tập & Đồ án",
-        doc_type="EXERCISE",
-        type_label="Bài tập lớn",
-        type_color="purple",
-        current_version="v1.1",
-        file_name="BTL_Web_FullStack_Reflex.docx",
-        file_size="2.1 MB",
-        downloads=540,
-        views=1350,
-        is_public=False,
-        permission_summary="Lớp D21CQCN02-B",
-        updated_at="2026-10-08 09:40",
-        description="Đề cương yêu cầu đồ án môn học: Xây dựng hệ thống học liệu số với Reflex và Django REST.",
-        tags=["web", "btl", "reflex"],
-        versions=[
-            DocVersion("v1.1", "BTL_Web_FullStack_Reflex.docx", "Cập nhật tiêu chí chấm điểm và deadline", "2026-10-08 09:40", "2.1 MB"),
-            DocVersion("v1.0", "BTL_Web_Init.docx", "Đề bài ban đầu", "2026-09-15 14:00", "1.8 MB"),
-        ],
-        permissions=[
-            DocPermission("p5", "CLASS", "Lớp D21CQCN02-B", True, True, False),
-        ],
-    ),
-    LecturerDoc(
-        id="ld5",
-        title="Sách tham khảo: Thiết kế Hệ thống phân tán và Microservices",
-        subject_code="IT420",
-        subject_name="Kiến trúc phần mềm",
-        faculty="CNTT",
-        folder_name="Sách tham khảo",
-        doc_type="REFERENCE",
-        type_label="Tham khảo",
-        type_color="green",
-        current_version="v1.0",
-        file_name="Distributed_Systems_Reference.pdf",
-        file_size="42.5 MB",
-        downloads=380,
-        views=920,
-        is_public=True,
-        permission_summary="Công khai toàn trường",
-        updated_at="2026-09-28 15:00",
-        description="Tài liệu chuyên khảo về CAP theorem, Event-Driven Architecture và Message Queue.",
-        tags=["microservices", "distributed", "kien-truc"],
-        versions=[
-            DocVersion("v1.0", "Distributed_Systems_Reference.pdf", "Bản dịch tham khảo", "2026-09-28 15:00", "42.5 MB"),
-        ],
-        permissions=[
-            DocPermission("p6", "PUBLIC", "Toàn trường", True, True, False),
-        ],
-    ),
-]
-
-SUBJECT_LIST = [
+DEFAULT_SUBJECT_ITEMS = [
     {"code": "ALL", "name": "Tất cả môn học"},
-    {"code": "IT202", "name": "IT202 - Cấu trúc dữ liệu & GT"},
-    {"code": "IT305", "name": "IT305 - Cơ sở dữ liệu"},
-    {"code": "IT101", "name": "IT101 - Nhập môn lập trình"},
-    {"code": "IT410", "name": "IT410 - Lập trình Web"},
-    {"code": "IT420", "name": "IT420 - Kiến trúc phần mềm"},
+    {"code": "SUBJ1", "name": "Lập trình Java"},
+    {"code": "SUBJ2", "name": "Cơ sở dữ liệu"},
+    {"code": "SUBJ3", "name": "Mạng máy tính"},
+    {"code": "SUBJ4", "name": "Kinh tế vi mô"},
+    {"code": "SUBJ5", "name": "Kế toán đại cương"},
+    {"code": "SUBJ6", "name": "Tiếng Anh chuyên ngành"},
+    {"code": "SUBJ7", "name": "Ngữ pháp cơ bản"},
 ]
+
+SUBJECT_LIST = DEFAULT_SUBJECT_ITEMS
 
 DOC_TYPES_SELECT = [
     {"value": "TEXTBOOK", "label": "Giáo trình", "color": "blue"},
@@ -228,12 +88,130 @@ DOC_TYPES_SELECT = [
 # ─── State ───────────────────────────────────────────────────────────────────
 
 class LecturerDocState(rx.State):
-    """Quản trị toàn bộ vòng đời tài liệu của giảng viên."""
+    """Quản trị toàn bộ vòng đời tài liệu của giảng viên kết nối PostgreSQL."""
 
-    documents: List[LecturerDoc] = MOCK_LECTURER_DOCS
+    documents: List[LecturerDoc] = []
     search_query: str = ""
     selected_subject: str = "ALL"
     selected_type: str = "ALL"
+    available_subjects: List[dict] = DEFAULT_SUBJECT_ITEMS
+    edit_subject_options: List[dict] = DEFAULT_SUBJECT_ITEMS[1:]
+    is_loading: bool = False
+    error_message: str = ""
+
+    async def fetch_documents(self):
+        """Tải danh sách học liệu thực tế từ cơ sở dữ liệu PostgreSQL."""
+        self.is_loading = True
+        self.error_message = ""
+        try:
+            auth = await self.get_state(AuthState)
+            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+
+            import httpx
+            async with httpx.AsyncClient() as client:
+                resp = await client.get("http://127.0.0.1:8000/api/documents/", headers=headers, timeout=10.0)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    raw_docs = data.get("documents", [])
+                    res = []
+                    for d in raw_docs:
+                        doc_id = str(d.get("document_id", d.get("id", "")))
+                        title = d.get("title", "Tài liệu học phần")
+                        desc = d.get("description", "") or ""
+                        subj = d.get("subject", {}) if isinstance(d.get("subject"), dict) else {}
+                        dept = subj.get("department", {}) if isinstance(subj.get("department"), dict) else {}
+                        dept_name = dept.get("department_name", "")
+
+                        dept_id_val = str(dept.get("department_id", ""))
+                        dn = dept_name.lower()
+                        faculty = "CNTT"
+                        if dept_id_val == "2" or "kinh" in dn:
+                            faculty = "KT"
+                        elif dept_id_val == "3" or "ngoai" in dn:
+                            faculty = "NN"
+                        elif "dieu hanh" in dn or "điều hành" in dn or "dhb" in dn:
+                            faculty = "DHB"
+
+                        # Determine type
+                        t_lower = title.lower()
+                        d_lower = desc.lower()
+                        doc_type = "REFERENCE"
+                        type_label = "Sách tham khảo"
+                        type_color = "green"
+                        if "slide" in t_lower or "bài giảng" in t_lower:
+                            doc_type = "SLIDE"
+                            type_label = "Slide Bài giảng"
+                            type_color = "orange"
+                        elif "đề thi" in t_lower or "exam" in t_lower:
+                            doc_type = "EXAM"
+                            type_label = "Đề thi & Đáp án"
+                            type_color = "red"
+                        elif "bài tập" in t_lower or "btl" in t_lower:
+                            doc_type = "EXERCISE"
+                            type_label = "Bài tập lớn"
+                            type_color = "purple"
+                        elif "sách" in t_lower or "giáo trình" in t_lower:
+                            doc_type = "TEXTBOOK"
+                            type_label = "Giáo trình"
+                            type_color = "blue"
+
+                        created = (d.get("created_at") or "")[:16].replace("T", " ")
+                        fsize = d.get("file_size", 0) or 0
+                        if fsize > 1024*1024:
+                            fsize_str = f"{fsize / (1024*1024):.1f} MB"
+                        elif fsize > 1024:
+                            fsize_str = f"{fsize / 1024:.1f} KB"
+                        else:
+                            fsize_str = f"{fsize} B" if fsize else "3.5 MB"
+
+                        fname = d.get("original_file_name") or d.get("file_name") or f"doc_{doc_id}.pdf"
+                        tags = [t.get("tag_name") for t in d.get("tags", [])] if isinstance(d.get("tags"), list) else []
+
+                        res.append(LecturerDoc(
+                            id=doc_id,
+                            title=title,
+                            subject_code=f"SUBJ{subj.get('subject_id', '')}",
+                            subject_name=subj.get("subject_name", "Chưa phân môn"),
+                            faculty=faculty,
+                            folder_name="Tài liệu môn học",
+                            doc_type=doc_type,
+                            type_label=type_label,
+                            type_color=type_color,
+                            current_version="v1.0",
+                            file_name=fname,
+                            file_size=fsize_str,
+                            downloads=d.get("download_count", 0),
+                            views=d.get("view_count", 0),
+                            is_public=d.get("is_public", True),
+                            permission_summary="Công khai toàn trường" if d.get("is_public") else "Giới hạn theo môn học",
+                            updated_at=created,
+                            description=desc,
+                            tags=tags,
+                            versions=[
+                                DocVersion("v1.0", fname, "Bản phát hành chính thức", created, fsize_str)
+                            ],
+                            permissions=[
+                                DocPermission(f"p_{doc_id}", "PUBLIC", "Toàn trường", True, True, False)
+                            ]
+                        ))
+                    self.documents = res
+
+                    resp_s = await client.get("http://127.0.0.1:8000/api/subjects/", headers=headers, timeout=5.0)
+                    if resp_s.status_code == 200:
+                        s_data = resp_s.json().get("subjects", [])
+                        if s_data:
+                            dyn_subjs = [
+                                {"code": f"SUBJ{s.get('subject_id')}", "name": s.get("subject_name", "")}
+                                for s in s_data
+                            ]
+                            self.available_subjects = [{"code": "ALL", "name": "Tất cả môn học"}] + dyn_subjs
+                            self.edit_subject_options = dyn_subjs
+                else:
+                    self.error_message = f"Lỗi tải dữ liệu: HTTP {resp.status_code}"
+        except Exception as e:
+            self.error_message = f"Không thể kết nối cơ sở dữ liệu: {str(e)}"
+        finally:
+            self.is_loading = False
 
     # ── Edit / Create Document Modal ──
     show_edit_modal: bool = False
@@ -362,63 +340,52 @@ class LecturerDocState(rx.State):
     def remove_edit_tag(self, tag: str):
         self.edit_tags = [t for t in self.edit_tags if t != tag]
 
-    def save_document(self):
+    async def save_document(self):
         if not self.edit_title.strip():
             return rx.toast.error("Vui lòng nhập tiêu đề tài liệu!")
 
-        time_now = datetime.now().strftime("%Y-%m-%d %H:%M")
-        type_info = next((t for t in DOC_TYPES_SELECT if t["value"] == self.edit_type), DOC_TYPES_SELECT[0])
-
-        if self.is_create_mode:
-            new_id = f"ld_{len(self.documents) + 1}"
-            subj_name = next((s["name"] for s in SUBJECT_LIST if s["code"] == self.edit_subject), self.edit_subject)
-            new_doc = LecturerDoc(
-                id=new_id,
-                title=self.edit_title,
-                subject_code=self.edit_subject,
-                subject_name=subj_name,
-                faculty="CNTT",
-                folder_name=self.edit_folder,
-                doc_type=self.edit_type,
-                type_label=type_info["label"],
-                type_color=type_info["color"],
-                current_version="v1.0",
-                file_name=f"{self.edit_subject}_{self.edit_title[:15]}.pdf",
-                file_size="8.5 MB",
-                downloads=0,
-                views=1,
-                is_public=True,
-                permission_summary="Công khai toàn trường",
-                updated_at=time_now,
-                description=self.edit_desc,
-                tags=list(self.edit_tags),
-                versions=[
-                    DocVersion("v1.0", f"{self.edit_subject}_Init.pdf", "Bản phát hành đầu tiên", time_now, "8.5 MB")
-                ],
-                permissions=[
-                    DocPermission(f"p_{new_id}", "PUBLIC", "Toàn trường", True, True, False)
-                ],
-            )
-            self.documents.insert(0, new_doc)
-            self.show_edit_modal = False
-            return rx.toast.success("Đã thêm tài liệu mới thành công!")
-        else:
-            updated = []
-            for d in self.documents:
-                if d.id == self.edit_doc_id:
-                    d.title = self.edit_title
-                    d.subject_code = self.edit_subject
-                    d.folder_name = self.edit_folder
-                    d.doc_type = self.edit_type
-                    d.type_label = type_info["label"]
-                    d.type_color = type_info["color"]
-                    d.description = self.edit_desc
-                    d.tags = list(self.edit_tags)
-                    d.updated_at = time_now
-                updated.append(d)
-            self.documents = updated
-            self.show_edit_modal = False
-            return rx.toast.success("Đã cập nhật thông tin tài liệu!")
+        try:
+            auth = await self.get_state(AuthState)
+            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+            import httpx
+            async with httpx.AsyncClient() as client:
+                if self.is_create_mode:
+                    s_id = 1
+                    resp = await client.post(
+                        "http://127.0.0.1:8000/api/documents/",
+                        headers=headers,
+                        json={
+                            "title": self.edit_title.strip(),
+                            "description": self.edit_desc.strip(),
+                            "subject_id": s_id,
+                            "is_public": True,
+                        },
+                        timeout=10.0,
+                    )
+                    if resp.status_code in (200, 201):
+                        await self.fetch_documents()
+                        self.show_edit_modal = False
+                        return rx.toast.success("Đã thêm tài liệu mới vào cơ sở dữ liệu!")
+                    else:
+                        return rx.toast.error("Không thể tạo tài liệu. Vui lòng kiểm tra quyền.")
+                else:
+                    resp = await client.patch(
+                        f"http://127.0.0.1:8000/api/documents/{self.edit_doc_id}/",
+                        headers=headers,
+                        json={
+                            "title": self.edit_title.strip(),
+                            "description": self.edit_desc.strip(),
+                        },
+                        timeout=10.0,
+                    )
+                    if resp.status_code == 200:
+                        await self.fetch_documents()
+                        self.show_edit_modal = False
+                        return rx.toast.success("Đã cập nhật thông tin tài liệu trong database!")
+                    else:
+                        return rx.toast.error("Không thể cập nhật tài liệu.")
+        except Exception as e:
+            return rx.toast.error(f"Lỗi kết nối: {str(e)}")
 
     # ── Version History Logic ──
     def open_version_modal(self, doc: LecturerDoc):
@@ -541,12 +508,30 @@ class LecturerDocState(rx.State):
         self.show_delete_modal = False
         self.delete_doc_id = ""
 
-    def confirm_delete(self):
+    async def confirm_delete(self):
         doc_id = self.delete_doc_id
-        self.documents = [d for d in self.documents if d.id != doc_id]
-        self.show_delete_modal = False
-        self.delete_doc_id = ""
-        return rx.toast.success("Đã xóa tài liệu khỏi hệ thống!")
+        try:
+            auth = await self.get_state(AuthState)
+            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+            import httpx
+            async with httpx.AsyncClient() as client:
+                resp = await client.delete(
+                    f"http://127.0.0.1:8000/api/documents/{doc_id}/",
+                    headers=headers,
+                    timeout=10.0,
+                )
+                if resp.status_code in (200, 204):
+                    self.documents = [d for d in self.documents if d.id != doc_id]
+                    self.show_delete_modal = False
+                    self.delete_doc_id = ""
+                    return rx.toast.success("Đã xóa tài liệu khỏi cơ sở dữ liệu PostgreSQL!")
+                else:
+                    return rx.toast.error("Không thể xóa tài liệu.")
+        except Exception as e:
+            return rx.toast.error(f"Lỗi: {str(e)}")
+        finally:
+            self.show_delete_modal = False
+            self.delete_doc_id = ""
 
 
 # ─── UI Helper Components ────────────────────────────────────────────────────
@@ -704,11 +689,10 @@ def edit_create_modal() -> rx.Component:
                         rx.select.root(
                             rx.select.trigger(width="100%", size="2"),
                             rx.select.content(
-                                rx.select.item("IT202 - Cấu trúc dữ liệu & GT", value="IT202"),
-                                rx.select.item("IT305 - Cơ sở dữ liệu", value="IT305"),
-                                rx.select.item("IT101 - Nhập môn lập trình", value="IT101"),
-                                rx.select.item("IT410 - Lập trình Web", value="IT410"),
-                                rx.select.item("IT420 - Kiến trúc phần mềm", value="IT420"),
+                                rx.foreach(
+                                    LecturerDocState.edit_subject_options,
+                                    lambda s: rx.select.item(s["name"], value=s["code"]),
+                                )
                             ),
                             value=LecturerDocState.edit_subject,
                             on_change=LecturerDocState.set_edit_subject,
@@ -1312,12 +1296,10 @@ def lecturer_documents_page() -> rx.Component:
                     rx.select.root(
                         rx.select.trigger(width="240px", size="2"),
                         rx.select.content(
-                            rx.select.item("Tất cả môn học", value="ALL"),
-                            rx.select.item("IT202 - Cấu trúc dữ liệu & GT", value="IT202"),
-                            rx.select.item("IT305 - Cơ sở dữ liệu", value="IT305"),
-                            rx.select.item("IT101 - Nhập môn lập trình", value="IT101"),
-                            rx.select.item("IT410 - Lập trình Web", value="IT410"),
-                            rx.select.item("IT420 - Kiến trúc phần mềm", value="IT420"),
+                            rx.foreach(
+                                LecturerDocState.available_subjects,
+                                lambda s: rx.select.item(s["name"], value=s["code"]),
+                            )
                         ),
                         value=LecturerDocState.selected_subject,
                         on_change=LecturerDocState.set_selected_subject,

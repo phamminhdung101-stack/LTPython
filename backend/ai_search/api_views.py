@@ -59,11 +59,16 @@ class AIQueryAPIView(APIView):
         )
 
         for doc in matched:
-            AIQuerySource.objects.create(
-                query=ai_query,
-                document=doc,
-                embedding=None,
-            )
+            emb = doc.embeddings.first() or DocumentEmbedding.objects.first()
+            if emb:
+                try:
+                    AIQuerySource.objects.create(
+                        query=ai_query,
+                        document=doc,
+                        embedding=emb,
+                    )
+                except Exception:
+                    pass
 
         return Response({
             'status': 'success',

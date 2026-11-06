@@ -11,7 +11,6 @@ import reflex as rx
 from typing import List
 from .common_components import student_page_wrapper
 from .auth import AuthState
-        "type_label": "Bài tập lớn",
 FACULTIES = [
     {"value": "ALL", "label": "Tất cả các Khoa"},
     {"value": "CNTT", "label": "Khoa Công nghệ thông tin"},
@@ -32,7 +31,7 @@ DOC_TYPES_FILTER = [
 # ─── State ───────────────────────────────────────────────────────────────────
 
 class DocListState(rx.State):
-    """Quản lý tìm kiếm, lọc và tương tác với kho tài liệu học phần kết nối PostgreSQL thực tế."""
+    """Quản lý tìm kiếm, lọc và tương tác với kho tài liệu học phần kết nối PostgreSQL thực tế qua Django API."""
 
     search_query: str = ""
     selected_faculty: str = "ALL"
@@ -55,8 +54,118 @@ class DocListState(rx.State):
         self.selected_faculty = "ALL"
         self.selected_type = "ALL"
 
+    async def load_documents_from_api(self):
+        """Tải danh sách tài liệu từ PostgreSQL qua Django REST API."""
+        self.is_loading = True
+        self.api_error = ""
+        
+        try:
+            # Lấy token xác thực nếu có
+            auth = await self.get_state(AuthState)
+            headers = {}
+            if auth.auth_token:
+                headers["Authorization"] = f"Bearer {auth.auth_token}"
+            
+            import httpx
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "http://127.0.0.1:8000/api/documents/",
+                    headers=headers,
+                    timeout=10.0
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    raw_docs = data.get("documents", [])
+                    
+                    # Chuyển đổi dữ liệu PostgreSQL sang format hiển thị
+                    document_list = []
+                    for item in raw_docs:
+                        # Lấy thông tin môn học và khoa
+                        subject = item.get("subject", {})
+                        subject_name = subject.get("subject_name", "Chưa có môn học") if isinstance(subject, dict) else str(subject)
+                        
+                        department = subject.get("department", {}) if isinstance(subject, dict) else {}
+                        dept_name = department.get("department_name", "") if isinstance(department, dict) else ""
+                        
+                        # Map tên khoa sang mã
+                        dept_id_val = str(department.get("department_id", ""))
+                        dn = dept_name.lower()
+                        if dept_id_val == "2" or "kinh" in dn:
+                            faculty_code = "KT"
+                        elif dept_id_val == "3" or "ngoai" in dn:
+                            faculty_code = "NN"
+                        elif "dieu hanh" in dn or "điều hành" in dn or "dhb" in dn:
+                            faculty_code = "DHB"
+                        else:
+                            faculty_code = "CNTT"
+                        
+                        # Lấy người upload
+                        uploader_name = item.get("uploader_name")
+                        if not uploader_name:
+                            uploader_obj = item.get("uploader", {})
+                            uploader_name = uploader_obj.get("full_name") if isinstance(uploader_obj, dict) else str(uploader_obj or "Quản trị viên")
+
+                        # Xác định loại tài liệu từ title hoặc description
+                        title = item.get("title", "Tài liệu không tên")
+                        desc = item.get("description", "")
+                        status_val = item.get("status", "APPROVED")
+
+                        doc_type = "REFERENCE"
+                        type_label = "Tài liệu tham khảo"
+                        type_color = "gray"
+
+                        title_lower = title.lower()
+                        desc_lower = desc.lower()
+
+                        if "giáo trình" in title_lower or "giáo trình" in desc_lower or "textbook" in title_lower:
+                            doc_type = "TEXTBOOK"
+                            type_label = "Giáo trình"
+                            type_color = "blue"
+                        elif "slide" in title_lower or "bài giảng" in title_lower:
+                            doc_type = "SLIDE"
+                            type_label = "Slide Bài giảng"
+                            type_color = "purple"
+                        elif "đề thi" in title_lower or "exam" in title_lower or "kiểm tra" in title_lower:
+                            doc_type = "EXAM"
+                            type_label = "Đề thi & Đáp án"
+                            type_color = "red"
+                        elif "bài tập" in title_lower or "exercise" in title_lower:
+                            doc_type = "EXERCISE"
+                            type_label = "Bài tập"
+                            type_color = "orange"
+
+                        document_list.append({
+                            "id": item.get("document_id", 0),
+                            "title": title,
+                            "desc": desc or "Không có mô tả",
+                            "subject_code": f"SUBJ{subject.get('subject_id', 0)}" if isinstance(subject, dict) else "N/A",
+                            "subject_name": subject_name,
+                            "faculty": faculty_code,
+                            "doc_type": doc_type,
+                            "type_label": type_label,
+                            "type_color": type_color,
+                            "status": status_val,
+                            "downloads": item.get("download_count", 0),
+                            "uploader": uploader_name,
+                            "time": item.get("created_at", "")[:10],  # Chỉ lấy ngày
+                        })
+                    
+                    self.all_documents = document_list
+                else:
+                    self.api_error = f"Lỗi tải dữ liệu từ server (HTTP {response.status_code})"
+                    self.all_documents = []
+        
+        except Exception as e:
+            self.api_error = f"Không thể kết nối PostgreSQL: {str(e)}"
+            self.all_documents = []
+        
+        finally:
+            self.is_loading = False
+
     @rx.var
     def filtered_documents(self) -> List[dict]:
+        """Lọc tài liệu theo điều kiện tìm kiếm."""
         query = self.search_query.strip().lower()
         faculty = self.selected_faculty
         doc_type = self.selected_type
@@ -84,8 +193,29 @@ class DocListState(rx.State):
     def result_count(self) -> int:
         return len(self.filtered_documents)
 
-    def download_doc(self, title: str):
-        return rx.toast.success(f"Bắt đầu tải xuống: {title}")
+    async def download_doc(self, doc_id: int, title: str):
+        """Tải xuống tài liệu thực tế từ server."""
+        try:
+            auth = await self.get_state(AuthState)
+            headers = {}
+            if auth.auth_token:
+                headers["Authorization"] = f"Bearer {auth.auth_token}"
+            
+            import httpx
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"http://127.0.0.1:8000/api/documents/{doc_id}/download/",
+                    headers=headers,
+                    timeout=30.0
+                )
+                
+                if response.status_code == 200:
+                    return rx.toast.success(f"Bắt đầu tải xuống: {title}")
+                else:
+                    return rx.toast.error("Không thể tải tài liệu. Vui lòng kiểm tra quyền truy cập.")
+        
+        except Exception as e:
+            return rx.toast.error(f"Lỗi tải xuống: {str(e)}")
 
 
 # ─── UI Helper Components ────────────────────────────────────────────────────
@@ -107,6 +237,15 @@ def doc_card(doc: dict) -> rx.Component:
                     size="1",
                 ),
                 rx.spacer(),
+                rx.cond(
+                    doc["status"] == "APPROVED",
+                    rx.badge("Đã duyệt", color_scheme="green", variant="surface", size="1"),
+                    rx.cond(
+                        doc["status"] == "PENDING",
+                        rx.badge("Chờ duyệt", color_scheme="amber", variant="surface", size="1"),
+                        rx.badge("Từ chối", color_scheme="red", variant="surface", size="1"),
+                    ),
+                ),
                 rx.badge(doc["subject_code"], color_scheme="gray", variant="surface", size="1"),
                 align="center",
                 width="100%",
@@ -172,7 +311,7 @@ def doc_card(doc: dict) -> rx.Component:
                     size="2",
                     color_scheme="blue",
                     variant="solid",
-                    on_click=DocListState.download_doc(doc["title"]),
+                    on_click=DocListState.download_doc(doc["id"], doc["title"]),
                 ),
                 align="center",
                 width="100%",
@@ -331,19 +470,62 @@ def document_list_page() -> rx.Component:
                 width="100%",
             ),
 
-            # ── Document Grid ──
+            # ── Document Grid hoặc Loading/Error State ──
             rx.cond(
-                DocListState.filtered_documents.length() > 0,
-                rx.grid(
-                    rx.foreach(
-                        DocListState.filtered_documents,
-                        doc_card,
+                DocListState.is_loading,
+                # Loading state
+                rx.center(
+                    rx.vstack(
+                        rx.spinner(size="3", color_scheme="blue"),
+                        rx.text("Đang tải dữ liệu từ PostgreSQL...", size="3", color="slate.9", weight="medium"),
+                        spacing="3",
+                        align="center",
                     ),
-                    columns="3",
-                    spacing="4",
+                    padding_y="16",
                     width="100%",
                 ),
-                empty_search_state(),
+                rx.cond(
+                    DocListState.api_error != "",
+                    # Error state
+                    rx.center(
+                        rx.callout.root(
+                            rx.callout.icon(rx.icon("triangle-alert", size=18)),
+                            rx.callout.text(
+                                rx.vstack(
+                                    rx.text("Lỗi kết nối cơ sở dữ liệu", weight="bold", size="3"),
+                                    rx.text(DocListState.api_error, size="2"),
+                                    rx.button(
+                                        rx.icon("refresh-cw", size=14),
+                                        "Thử lại",
+                                        size="2",
+                                        on_click=DocListState.load_documents_from_api,
+                                        margin_top="2",
+                                    ),
+                                    spacing="2",
+                                ),
+                            ),
+                            color="red",
+                            variant="surface",
+                            size="2",
+                        ),
+                        padding_y="16",
+                        width="100%",
+                    ),
+                    # Data loaded successfully
+                    rx.cond(
+                        DocListState.filtered_documents.length() > 0,
+                        rx.grid(
+                            rx.foreach(
+                                DocListState.filtered_documents,
+                                doc_card,
+                            ),
+                            columns="3",
+                            spacing="4",
+                            width="100%",
+                        ),
+                        empty_search_state(),
+                    ),
+                ),
             ),
 
             spacing="5",

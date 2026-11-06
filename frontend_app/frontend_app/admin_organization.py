@@ -173,67 +173,114 @@ class OrgState(rx.State):
             async with httpx.AsyncClient() as client:
                 # 1. Departments
                 resp_d = await client.get("http://127.0.0.1:8000/api/departments/", headers=headers, timeout=5.0)
-                depts = []
-                if resp_d.status_code == 200:
-                    for d in resp_d.json().get("departments", []):
-                        did = str(d.get("department_id", ""))
-                        dname = d.get("department_name", "")
-                        depts.append(
-                            Department(
-                                id=did,
-                                code=f"K{did}",
-                                name=dname,
-                                description=f"Khoa {dname}",
-                                total_subjects=0,
-                                total_lecturers=0,
-                                total_students=0,
-                            )
-                        )
-                self.departments = depts
+                raw_depts = resp_d.json().get("departments", []) if resp_d.status_code == 200 else []
 
                 # 2. Subjects
                 resp_s = await client.get("http://127.0.0.1:8000/api/subjects/", headers=headers, timeout=5.0)
-                subjs = []
-                if resp_s.status_code == 200:
-                    for s in resp_s.json().get("subjects", []):
-                        sid = str(s.get("subject_id", ""))
-                        sname = s.get("subject_name", "")
-                        d_info = s.get("department", {})
-                        d_name = d_info.get("department_name", "") if isinstance(d_info, dict) else ""
-                        d_code = f"K{d_info.get('department_id', '')}" if isinstance(d_info, dict) else "CNTT"
-                        subjs.append(
-                            Subject(
-                                id=sid,
-                                code=f"MH{int(sid):02d}" if sid.isdigit() else sid,
-                                name=sname,
-                                department_code=d_code,
-                                department_name=d_name,
-                                credits=3,
-                                total_documents=0,
-                            )
-                        )
-                self.subjects = subjs
+                raw_subjs = resp_s.json().get("subjects", []) if resp_s.status_code == 200 else []
 
                 # 3. Classes
                 resp_c = await client.get("http://127.0.0.1:8000/api/classes/", headers=headers, timeout=5.0)
-                clss = []
-                if resp_c.status_code == 200:
-                    for c in resp_c.json().get("classes", []):
-                        cid = str(c.get("class_id", ""))
-                        cname = c.get("class_name", "")
-                        d_info = c.get("department", {})
-                        d_name = d_info.get("department_name", "") if isinstance(d_info, dict) else ""
-                        d_code = f"K{d_info.get('department_id', '')}" if isinstance(d_info, dict) else "CNTT"
-                        clss.append(
-                            StudentClass(
-                                id=cid,
-                                class_name=cname,
-                                department_code=d_code,
-                                department_name=d_name,
-                                year="2026",
-                                student_count=0,
-                            )
+                raw_classes = resp_c.json().get("classes", []) if resp_c.status_code == 200 else []
+
+                # 4. Fetch Users and Documents for accurate statistical counts
+                resp_u = await client.get("http://127.0.0.1:8000/api/users/", headers=headers, timeout=5.0)
+                raw_users = resp_u.json().get("users", []) if resp_u.status_code == 200 else []
+
+                resp_docs = await client.get("http://127.0.0.1:8000/api/documents/", headers=headers, timeout=5.0)
+                raw_docs = resp_docs.json().get("documents", []) if resp_docs.status_code == 200 else []
+
+                def map_dept_code(dept_id_val, dept_name_val):
+                    d_id_str = str(dept_id_val)
+                    if d_id_str == "1":
+                        return "CNTT"
+                    elif d_id_str == "2":
+                        return "KT"
+                    elif d_id_str == "3":
+                        return "NN"
+                    dn = str(dept_name_val).lower()
+                    if "kinh" in dn:
+                        return "KT"
+                    if "ngoai" in dn:
+                        return "NN"
+                    if "dieu hanh" in dn or "dhb" in dn:
+                        return "DHB"
+                    return "CNTT"
+
+                # Build Departments list
+                depts = []
+                for d in raw_depts:
+                    did = str(d.get("department_id", ""))
+                    dname = d.get("department_name", "")
+                    code = map_dept_code(did, dname)
+                    
+                    # Count real stats from PostgreSQL
+                    n_subjs = sum(1 for s in raw_subjs if str((s.get("department") or {}).get("department_id", s.get("department_id", ""))) == did)
+                    n_lects = sum(1 for u in raw_users if str((u.get("department") or {}).get("department_id", "")) == did and str(u.get("role_name", "")).upper() == "LECTURER")
+                    n_studs = sum(1 for u in raw_users if str((u.get("department") or {}).get("department_id", "")) == did and str(u.get("role_name", "")).upper() == "STUDENT")
+
+                    depts.append(
+                        Department(
+                            id=did,
+                            code=code,
+                            name=dname,
+                            description=f"Khoa {dname}",
+                            total_subjects=n_subjs,
+                            total_lecturers=n_lects,
+                            total_students=n_studs,
                         )
+                    )
+                self.departments = depts
+
+                # Build Subjects list
+                subjs = []
+                for s in raw_subjs:
+                    sid = str(s.get("subject_id", ""))
+                    sname = s.get("subject_name", "")
+                    d_info = s.get("department", {}) or {}
+                    d_id = str(d_info.get("department_id", s.get("department_id", "1")))
+                    d_name = d_info.get("department_name", "")
+                    d_code = map_dept_code(d_id, d_name)
+
+                    # Count real documents for this subject from PostgreSQL
+                    n_docs = sum(1 for doc in raw_docs if str((doc.get("subject") or {}).get("subject_id", "")) == sid)
+
+                    subjs.append(
+                        Subject(
+                            id=sid,
+                            code=f"MH{int(sid):02d}" if sid.isdigit() else sid,
+                            name=sname,
+                            department_code=d_code,
+                            department_name=d_name,
+                            credits=3,
+                            total_docs=n_docs,
+                        )
+                    )
+                self.subjects = subjs
+
+                # Build Classes list
+                clss = []
+                for c in raw_classes:
+                    cid = str(c.get("class_id", ""))
+                    cname = c.get("class_name", "")
+                    d_info = c.get("department", {}) or {}
+                    d_id = str(d_info.get("department_id", c.get("department_id", "1")))
+                    d_name = d_info.get("department_name", "")
+                    d_code = map_dept_code(d_id, d_name)
+
+                    # Count real students in this class from PostgreSQL
+                    n_students_in_cls = sum(1 for u in raw_users if str((u.get("student_class") or {}).get("class_id", "")) == cid)
+
+                    clss.append(
+                        StudentClass(
+                            id=cid,
+                            class_name=cname,
+                            department_code=d_code,
+                            department_name=d_name,
+                            year="2026",
+                            total_students=n_students_in_cls,
+                        )
+                    )
                 self.classes = clss
         except Exception as e:
             self.api_error = f"Không thể kết nối đến máy chủ: {str(e)}"

@@ -83,7 +83,19 @@ class AdminUserState(rx.State):
         if self.filter_role != "ALL":
             result = [u for u in result if u.role == self.filter_role]
         if self.filter_dept != "ALL":
-            result = [u for u in result if u.department == self.filter_dept]
+            fd = self.filter_dept.lower()
+            def match_dept(u_dept: str) -> bool:
+                ud = u_dept.lower()
+                if fd == "cntt" and ("cntt" in ud or "cong nghe" in ud):
+                    return True
+                if fd == "kt" and ("kt" in ud or "kinh" in ud):
+                    return True
+                if fd == "nn" and ("nn" in ud or "ngoai" in ud):
+                    return True
+                if fd == "dhb" and ("dhb" in ud or "dieu hanh" in ud or "điều hành" in ud):
+                    return True
+                return u_dept == self.filter_dept
+            result = [u for u in result if match_dept(u.department)]
         if self.filter_status == "ACTIVE":
             result = [u for u in result if u.is_active]
         elif self.filter_status == "INACTIVE":
