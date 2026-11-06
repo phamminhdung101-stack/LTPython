@@ -11,10 +11,12 @@ class DocumentPermission(models.Model):
         (USER, 'Theo người dùng'),
     ]
 
+    id = models.AutoField(primary_key=True, db_column='permission_id')
     document = models.ForeignKey(
         'documents.Document',
         on_delete=models.CASCADE,
         related_name='permissions',
+        db_column='document_id',
     )
     permission_type = models.CharField(max_length=50, choices=PERMISSION_TYPE_CHOICES)
 
@@ -23,18 +25,21 @@ class DocumentPermission(models.Model):
         on_delete=models.CASCADE,
         null=True,
         blank=True,
+        db_column='department_id',
     )
     student_class = models.ForeignKey(
         'academics.Class',
         on_delete=models.CASCADE,
         null=True,
         blank=True,
+        db_column='class_id',
     )
     user = models.ForeignKey(
         'accounts.User',
         on_delete=models.CASCADE,
         null=True,
         blank=True,
+        db_column='user_id',
     )
 
     can_view = models.BooleanField(default=True)

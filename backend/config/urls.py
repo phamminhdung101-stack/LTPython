@@ -9,6 +9,9 @@ from accounts.views import login_view, logout_view
 urlpatterns = [
     path('admin/', admin.site.urls),
 
+    # REST API Gateway (Phần 2 & Phần 3)
+    path('api/', include('config.api_urls')),
+
     # Auth
     path('auth/login/', login_view, name='login'),
     path('auth/logout/', logout_view, name='logout'),
@@ -22,4 +25,5 @@ urlpatterns = [
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])
+    if getattr(settings, 'STATICFILES_DIRS', None):
+        urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])

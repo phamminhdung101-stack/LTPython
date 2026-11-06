@@ -3,6 +3,7 @@ from django.conf import settings
 
 
 class Tag(models.Model):
+    id = models.AutoField(primary_key=True, db_column='tag_id')
     tag_name = models.CharField(max_length=100, unique=True)
 
     class Meta:
@@ -16,11 +17,13 @@ class Tag(models.Model):
 
 
 class Folder(models.Model):
+    id = models.AutoField(primary_key=True, db_column='folder_id')
     folder_name = models.CharField(max_length=255)
     subject = models.ForeignKey(
         'academics.Subject',
         on_delete=models.CASCADE,
         related_name='folders',
+        db_column='subject_id',
     )
     parent_folder = models.ForeignKey(
         'self',
@@ -28,12 +31,14 @@ class Folder(models.Model):
         null=True,
         blank=True,
         related_name='subfolders',
+        db_column='parent_folder_id',
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
+        db_column='created_by',
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -57,12 +62,14 @@ class Document(models.Model):
         (REJECTED, 'Từ chối'),
     ]
 
+    id = models.AutoField(primary_key=True, db_column='document_id')
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, default='')
     subject = models.ForeignKey(
         'academics.Subject',
         on_delete=models.CASCADE,
         related_name='documents',
+        db_column='subject_id',
     )
     folder = models.ForeignKey(
         Folder,
@@ -70,6 +77,7 @@ class Document(models.Model):
         null=True,
         blank=True,
         related_name='documents',
+        db_column='folder_id',
     )
     uploader = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -77,6 +85,7 @@ class Document(models.Model):
         null=True,
         blank=True,
         related_name='uploaded_documents',
+        db_column='uploader_id',
     )
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default=PENDING)
     is_public = models.BooleanField(default=False)
@@ -88,9 +97,15 @@ class Document(models.Model):
         null=True,
         blank=True,
         related_name='approved_documents',
+        db_column='approved_by',
     )
     approved_at = models.DateTimeField(null=True, blank=True)
-    tags = models.ManyToManyField(Tag, blank=True, related_name='documents')
+    tags = models.ManyToManyField(
+        Tag,
+        blank=True,
+        related_name='documents',
+        db_table='document_tags',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -108,18 +123,22 @@ class Document(models.Model):
 
 
 class DocumentVersion(models.Model):
+    id = models.AutoField(primary_key=True, db_column='version_id')
     document = models.ForeignKey(
         Document,
         on_delete=models.CASCADE,
         related_name='versions',
+        db_column='document_id',
     )
-    file = models.FileField(upload_to='documents/')
+    # Lưu Cloudflare R2 object key hoặc file path
+    file = models.CharField(max_length=500, db_column='file_path')
     version_number = models.PositiveIntegerField()
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
+        db_column='updated_by',
     )
     updated_at = models.DateTimeField(auto_now_add=True)
     change_summary = models.TextField(blank=True, default='')
@@ -133,6 +152,18 @@ class DocumentVersion(models.Model):
 
     def __str__(self):
         return f'{self.document.title} – v{self.version_number}'
+
+    @property
+    def file_path(self):
+        return self.file
+
+    @property
+    def object_key(self):
+        return self.file
+
+    def get_download_url(self, expires_in=3600):
+        from .r2_service import r2_service
+        return r2_service.generate_download_url(self.object_key, expires_in=expires_in)
 
 
 class DocumentActivityLog(models.Model):
@@ -149,16 +180,19 @@ class DocumentActivityLog(models.Model):
         ('REMOVE_TAG', 'Xóa tag'),
     ]
 
+    id = models.AutoField(primary_key=True, db_column='log_id')
     document = models.ForeignKey(
         Document,
         on_delete=models.CASCADE,
         related_name='activity_logs',
+        db_column='document_id',
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
+        db_column='user_id',
     )
     action = models.CharField(max_length=100, choices=ACTION_CHOICES)
     description = models.TextField(blank=True, default='')

@@ -12,6 +12,7 @@ class Role(models.Model):
         (STUDENT, 'Sinh viên'),
     ]
 
+    id = models.AutoField(primary_key=True, db_column='role_id')
     role_name = models.CharField(max_length=50, unique=True, choices=ROLE_CHOICES)
 
     class Meta:
@@ -28,7 +29,10 @@ class UserManager(BaseUserManager):
         if not username:
             raise ValueError('Username là bắt buộc')
         user = self.model(username=username, full_name=full_name, role=role, **extra_fields)
-        user.set_password(password)
+        if password:
+            user.set_password(password)
+        else:
+            user.password = '123456'
         user.save(using=self._db)
         return user
 
@@ -40,7 +44,9 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
+    id = models.AutoField(primary_key=True, db_column='user_id')
     username = models.CharField(max_length=100, unique=True)
+    password = models.CharField(max_length=255, db_column='password_hash')
     full_name = models.CharField(max_length=255)
     email = models.EmailField(blank=True, default='')
 
@@ -48,6 +54,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         Role,
         on_delete=models.PROTECT,
         related_name='users',
+        db_column='role_id',
         null=True,
         blank=True,
     )
@@ -57,6 +64,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         null=True,
         blank=True,
         related_name='users',
+        db_column='department_id',
     )
     student_class = models.ForeignKey(
         'academics.Class',
@@ -64,6 +72,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         null=True,
         blank=True,
         related_name='students',
+        db_column='class_id',
     )
 
     is_active = models.BooleanField(default=True)

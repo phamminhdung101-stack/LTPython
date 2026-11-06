@@ -3,6 +3,7 @@ from django.db import models
 
 class Department(models.Model):
     """Khoa / Faculty"""
+    id = models.AutoField(primary_key=True, db_column='department_id')
     department_name = models.CharField(max_length=255, unique=True)
 
     class Meta:
@@ -17,11 +18,13 @@ class Department(models.Model):
 
 class Class(models.Model):
     """Lớp / Khóa học"""
+    id = models.AutoField(primary_key=True, db_column='class_id')
     class_name = models.CharField(max_length=255, unique=True)
     department = models.ForeignKey(
         Department,
         on_delete=models.CASCADE,
         related_name='classes',
+        db_column='department_id',
     )
     is_locked = models.BooleanField(default=False)
 
@@ -37,11 +40,13 @@ class Class(models.Model):
 
 class Subject(models.Model):
     """Môn học"""
+    id = models.AutoField(primary_key=True, db_column='subject_id')
     subject_name = models.CharField(max_length=255)
     department = models.ForeignKey(
         Department,
         on_delete=models.CASCADE,
         related_name='subjects',
+        db_column='department_id',
     )
 
     class Meta:

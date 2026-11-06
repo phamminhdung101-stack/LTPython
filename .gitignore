@@ -1,0 +1,46 @@
+# Python Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Reflex & Web Build Cache
+frontend_app/.web/
+.web/
+*.db
+.states/
+
+# Environment Variables & Local configs
+.env
+.env.local
+
+# OS Caches
+.DS_Store
+Thumbs.db
+
+# Uploaded Files
+frontend_app/uploaded_files/
+uploaded_files/
+
+# Media files (uploaded documents - không commit file nhị phân)
+media/
+backend/media/
+
+# SQLite local DB
+backend/db.sqlite3
+*.sqlite3
+
+# Personal presentation decks & slide generator scripts (Báo cáo cá nhân)
+*.pptx
+generate_slides.py
+generate_student_decks.py
+make_all_diagrams.py
+make_slide5_diagram.py
+make_slide9_diagram.py
+update_thai_anh_ky_pptx.py
