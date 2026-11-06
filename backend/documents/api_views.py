@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Sum, Count
 from django.http import FileResponse
 from django.core.exceptions import SuspiciousFileOperation
 from rest_framework import status
@@ -13,9 +13,16 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import AllowAny
 
-from academics.models import Subject
+from academics.models import Subject, Department
+from accounts.models import User
 from .models import Document, DocumentVersion, Tag, Folder, DocumentActivityLog
-from .serializers import DocumentSerializer, DocumentCreateSerializer, DocumentVersionSerializer
+from .serializers import (
+    DocumentSerializer,
+    DocumentCreateSerializer,
+    DocumentVersionSerializer,
+    FolderSerializer,
+    DocumentActivityLogSerializer,
+)
 from .storage_service import LocalDocumentStorageService
 from permissions.rest_permissions import (
     IsAuthenticatedCustom,
@@ -72,6 +79,7 @@ class DocumentListCreateAPIView(APIView):
         subject_id = request.GET.get('subject_id')
         dept_id = request.GET.get('department_id')
         doc_status = request.GET.get('status')
+        uploader = request.GET.get('uploader')
 
         if q:
             qs = qs.filter(
@@ -85,6 +93,10 @@ class DocumentListCreateAPIView(APIView):
             qs = qs.filter(subject__department_id=int(dept_id))
         if doc_status and doc_status != 'ALL':
             qs = qs.filter(status=doc_status)
+        if uploader == 'me' and user:
+            qs = qs.filter(uploader_id=user.user_id)
+        elif uploader and str(uploader).isdigit():
+            qs = qs.filter(uploader_id=int(uploader))
 
         serializer = DocumentSerializer(qs, many=True)
         return Response({
@@ -518,4 +530,129 @@ class DocumentPendingListAPIView(APIView):
             'status': 'success',
             'total': qs.count(),
             'pending_documents': serializer.data,
+        }, status=status.HTTP_200_OK)
+
+
+class FolderListCreateAPIView(APIView):
+    """
+    GET /api/folders/
+    Danh sách thư mục theo môn học (?subject_id=...)
+    POST /api/folders/
+    Tạo thư mục mới (Đã đăng nhập)
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        qs = Folder.objects.all().order_by('folder_name')
+        subject_id = request.GET.get('subject_id')
+        if subject_id and str(subject_id).isdigit():
+            qs = qs.filter(subject_id=int(subject_id))
+
+        serializer = FolderSerializer(qs, many=True)
+        return Response({
+            'status': 'success',
+            'total': qs.count(),
+            'folders': serializer.data,
+        }, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        if not (request.user and request.user.is_authenticated):
+            return Response({'status': 'error', 'message': 'Vui lòng đăng nhập.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        folder_name = request.data.get('folder_name', '').strip()
+        subject_id = request.data.get('subject_id')
+        if not folder_name or not subject_id:
+            return Response({'status': 'error', 'message': 'Tên thư mục và mã môn học là bắt buộc.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            folder, created = Folder.objects.get_or_create(
+                folder_name=folder_name,
+                subject_id=int(subject_id),
+                defaults={'created_by': request.user}
+            )
+            return Response({
+                'status': 'success',
+                'folder': FolderSerializer(folder).data,
+                'created': created,
+            }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ActivityLogListAPIView(APIView):
+    """
+    GET /api/activity-logs/
+    Lấy danh sách nhật ký hoạt động hệ thống từ bảng document_activity_logs trong PostgreSQL
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        qs = DocumentActivityLog.objects.select_related('document', 'user', 'user__role').order_by('-created_at')[:30]
+        serializer = DocumentActivityLogSerializer(qs, many=True)
+        return Response({
+            'status': 'success',
+            'total': qs.count(),
+            'logs': serializer.data,
+        }, status=status.HTTP_200_OK)
+
+
+class DashboardStatsAPIView(APIView):
+    """
+    GET /api/dashboard/stats/
+    Thống kê tổng hợp toàn diện từ các bảng PostgreSQL thực tế:
+    documents, document_activity_logs, subjects, users, departments.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        user = request.user if (request.user and request.user.is_authenticated) else None
+
+        # Tổng hợp số liệu từ bảng documents
+        doc_qs = Document.objects.all()
+        total_docs = doc_qs.count()
+        approved_docs = doc_qs.filter(status=Document.APPROVED).count()
+        pending_docs = doc_qs.filter(status=Document.PENDING).count()
+        rejected_docs = doc_qs.filter(status=Document.REJECTED).count()
+
+        totals = doc_qs.aggregate(
+            total_views=Sum('view_count'),
+            total_downloads=Sum('download_count'),
+        )
+        total_views = totals.get('total_views') or 0
+        total_downloads = totals.get('total_downloads') or 0
+
+        # Số liệu môn học, khoa, người dùng
+        total_subjects = Subject.objects.count()
+        total_users = User.objects.count()
+        total_departments = Department.objects.count()
+
+        # Thống kê phân bố học liệu theo môn học
+        subject_stats = (
+            Subject.objects.annotate(doc_count=Count('documents'))
+            .values('subject_id', 'subject_name', 'doc_count')
+            .order_by('-doc_count')[:6]
+        )
+
+        # 10 hoạt động gần nhất từ bảng document_activity_logs
+        recent_logs = (
+            DocumentActivityLog.objects.select_related('document', 'user', 'user__role')
+            .order_by('-created_at')[:10]
+        )
+        logs_serializer = DocumentActivityLogSerializer(recent_logs, many=True)
+
+        return Response({
+            'status': 'success',
+            'stats': {
+                'total_documents': total_docs,
+                'approved_documents': approved_docs,
+                'pending_documents': pending_docs,
+                'rejected_documents': rejected_docs,
+                'total_views': total_views,
+                'total_downloads': total_downloads,
+                'total_subjects': total_subjects,
+                'total_users': total_users,
+                'total_departments': total_departments,
+            },
+            'subject_breakdown': list(subject_stats),
+            'recent_activities': logs_serializer.data,
         }, status=status.HTTP_200_OK)

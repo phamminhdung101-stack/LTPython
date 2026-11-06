@@ -10,164 +10,8 @@ với thanh tìm kiếm, bộ lọc trực quan và lưới thẻ tài liệu si
 import reflex as rx
 from typing import List
 from .common_components import student_page_wrapper
-
-# ─── Mock Data Học Liệu ──────────────────────────────────────────────────────
-
-MOCK_DOCUMENTS = [
-    {
-        "id": "1",
-        "title": "Giáo trình Cấu trúc dữ liệu và giải thuật",
-        "subject_code": "IT202",
-        "subject_name": "Cấu trúc dữ liệu & giải thuật",
-        "faculty": "CNTT",
-        "faculty_name": "Khoa Công nghệ thông tin",
-        "doc_type": "TEXTBOOK",
-        "type_label": "Giáo trình",
-        "type_color": "blue",
-        "icon": "book",
-        "desc": "Tài liệu học phần chính thức dành cho sinh viên CNTT, bao gồm lý thuyết hàng đợi, ngăn xếp, cây và đồ thị.",
-        "uploader": "TS. Nguyễn Văn An",
-        "uploader_role": "Giảng viên",
-        "downloads": 1240,
-        "views": 3150,
-        "time": "Hôm qua",
-        "filename": "GiaoTrinh_CTDL_GT.pdf",
-    },
-    {
-        "id": "2",
-        "title": "Slide Bài giảng Chương 1 - 5: Kinh tế vi mô",
-        "subject_code": "ECO101",
-        "subject_name": "Kinh tế vi mô",
-        "faculty": "KT",
-        "faculty_name": "Khoa Kinh tế",
-        "doc_type": "SLIDE",
-        "type_label": "Slide Bài giảng",
-        "type_color": "orange",
-        "icon": "presentation",
-        "desc": "Tổng hợp toàn bộ slide bài giảng trên lớp kèm các ví dụ thực tiễn về cung cầu, độ co giãn và hành vi người tiêu dùng.",
-        "uploader": "ThS. Lê Thị Bình",
-        "uploader_role": "Giảng viên",
-        "downloads": 856,
-        "views": 1940,
-        "time": "3 ngày trước",
-        "filename": "KTVM_Slide_C1_C5.pptx",
-    },
-    {
-        "id": "3",
-        "title": "Bộ Đề thi cuối kỳ Nhập môn lập trình có đáp án",
-        "subject_code": "IT101",
-        "subject_name": "Nhập môn lập trình",
-        "faculty": "CNTT",
-        "faculty_name": "Khoa Công nghệ thông tin",
-        "doc_type": "EXAM",
-        "type_label": "Đề thi & Đáp án",
-        "type_color": "red",
-        "icon": "file-check",
-        "desc": "Tổng hợp 4 mã đề thi các năm 2023-2025 có lời giải chi tiết và mã nguồn mẫu bằng ngôn ngữ Python.",
-        "uploader": "CLB Tin học VAA",
-        "uploader_role": "Sinh viên",
-        "downloads": 2130,
-        "views": 4820,
-        "time": "1 tuần trước",
-        "filename": "IT101_DeThi_DapAn_TongHop.pdf",
-    },
-    {
-        "id": "4",
-        "title": "Tóm tắt công thức & Bài tập ôn thi Kinh tế vĩ mô",
-        "subject_code": "ECO202",
-        "subject_name": "Kinh tế vĩ mô",
-        "faculty": "KT",
-        "faculty_name": "Khoa Kinh tế",
-        "doc_type": "REFERENCE",
-        "type_label": "Tham khảo",
-        "type_color": "green",
-        "icon": "library",
-        "desc": "Bản tổng hợp các mô hình IS-LM, AS-AD và công thức tính toán GDP, lạm phát, thất nghiệp thi giữa kỳ & cuối kỳ.",
-        "uploader": "Nhóm SV K65 Kinh tế",
-        "uploader_role": "Sinh viên",
-        "downloads": 1420,
-        "views": 2780,
-        "time": "2 tuần trước",
-        "filename": "KTVM_TomTat_CongThuc.pdf",
-    },
-    {
-        "id": "5",
-        "title": "Script SQL & Bài tập lớn Cơ sở dữ liệu Quản lý bán hàng",
-        "subject_code": "IT305",
-        "subject_name": "Cơ sở dữ liệu",
-        "faculty": "CNTT",
-        "faculty_name": "Khoa Công nghệ thông tin",
-        "doc_type": "EXERCISE",
+from .auth import AuthState
         "type_label": "Bài tập lớn",
-        "type_color": "violet",
-        "icon": "pencil-line",
-        "desc": "Bộ mã nguồn tạo bảng, ràng buộc khóa ngoại, stored procedures và 20 truy vấn SQL nâng cao minh họa.",
-        "uploader": "TS. Nguyễn Văn An",
-        "uploader_role": "Giảng viên",
-        "downloads": 978,
-        "views": 1850,
-        "time": "2 tuần trước",
-        "filename": "CSDL_BanHang_Script.sql",
-    },
-    {
-        "id": "6",
-        "title": "Tài liệu Từ vựng Tiếng Anh Chuyên ngành Hàng không",
-        "subject_code": "ENG201",
-        "subject_name": "Tiếng Anh chuyên ngành",
-        "faculty": "NN",
-        "faculty_name": "Khoa Ngoại ngữ",
-        "doc_type": "TEXTBOOK",
-        "type_label": "Giáo trình",
-        "type_color": "blue",
-        "icon": "book",
-        "desc": "Sổ tay thuật ngữ ICAO, từ vựng kỹ thuật buồng lái và giao tiếp không lưu chuẩn quốc tế.",
-        "uploader": "Khoa Ngoại ngữ VAA",
-        "uploader_role": "Khoa",
-        "downloads": 1640,
-        "views": 3410,
-        "time": "1 tháng trước",
-        "filename": "Aviation_English_Vocabulary.pdf",
-    },
-    {
-        "id": "7",
-        "title": "Sổ tay Quy trình & Thủ tục Kiểm soát không lưu tại sân",
-        "subject_code": "ATC101",
-        "subject_name": "Điều hành bay cơ bản",
-        "faculty": "DHB",
-        "faculty_name": "Khoa Điều hành bay",
-        "doc_type": "REFERENCE",
-        "type_label": "Tham khảo",
-        "type_color": "green",
-        "icon": "library",
-        "desc": "Tài liệu mô phỏng quy trình cấp huấn lệnh lăn, cất cánh, hạ cánh và xử lý tình huống khẩn cấp tại đài kiểm soát.",
-        "uploader": "ThS. Trần Quang Huy",
-        "uploader_role": "Giảng viên",
-        "downloads": 745,
-        "views": 1520,
-        "time": "1 tháng trước",
-        "filename": "SoTay_ATC_SanBay.pdf",
-    },
-    {
-        "id": "8",
-        "title": "Slide Bài giảng Lập trình Web Full-Stack với Python",
-        "subject_code": "IT410",
-        "subject_name": "Lập trình Web",
-        "faculty": "CNTT",
-        "faculty_name": "Khoa Công nghệ thông tin",
-        "doc_type": "SLIDE",
-        "type_label": "Slide Bài giảng",
-        "type_color": "orange",
-        "icon": "presentation",
-        "desc": "Kiến trúc web hiện đại, REST API, kiến trúc Client-Server và xây dựng frontend tương tác cao.",
-        "uploader": "TS. Nguyễn Văn An",
-        "uploader_role": "Giảng viên",
-        "downloads": 1120,
-        "views": 2690,
-        "time": "Tháng trước",
-        "filename": "Web_FullStack_Python_Slide.pptx",
-    },
-]
-
 FACULTIES = [
     {"value": "ALL", "label": "Tất cả các Khoa"},
     {"value": "CNTT", "label": "Khoa Công nghệ thông tin"},
@@ -188,12 +32,14 @@ DOC_TYPES_FILTER = [
 # ─── State ───────────────────────────────────────────────────────────────────
 
 class DocListState(rx.State):
-    """Quản lý tìm kiếm, lọc và tương tác với kho tài liệu học phần."""
+    """Quản lý tìm kiếm, lọc và tương tác với kho tài liệu học phần kết nối PostgreSQL thực tế."""
 
     search_query: str = ""
     selected_faculty: str = "ALL"
     selected_type: str = "ALL"
-    all_documents: List[dict] = MOCK_DOCUMENTS
+    all_documents: List[dict] = []
+    is_loading: bool = False
+    api_error: str = ""
 
     def set_search_query(self, value: str):
         self.search_query = value

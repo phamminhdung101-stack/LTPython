@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import List
 import reflex as rx
 from .admin_panel import admin_page_wrapper
+from .auth import AuthState
 
 
 # ─── Dataclass Models ─────────────────────────────────────────────────────────
@@ -48,51 +49,17 @@ class StudentClass:
     total_students: int = 0
 
 
-# ─── Mock Data ────────────────────────────────────────────────────────────────
-
-MOCK_DEPARTMENTS: List[Department] = [
-    Department("d1", "CNTT", "Khoa Công nghệ thông tin", "Đào tạo kỹ sư CNTT, an ninh mạng và hệ thống thông tin.", 12, 8, 480),
-    Department("d2", "KT", "Khoa Kinh tế", "Đào tạo quản trị kinh doanh, kế toán và kinh tế hàng không.", 8, 5, 320),
-    Department("d3", "NN", "Khoa Ngoại ngữ", "Đào tạo tiếng Anh hàng không chuẩn ICAO và ngoại ngữ chuyên ngành.", 6, 4, 190),
-    Department("d4", "DHB", "Khoa Điều hành bay", "Đào tạo kiểm soát không lưu và điều hành bay theo tiêu chuẩn ICAO.", 7, 6, 145),
-]
-
-MOCK_SUBJECTS: List[Subject] = [
-    Subject("s1", "IT101", "Nhập môn lập trình", "CNTT", "Khoa Công nghệ thông tin", 3, 24),
-    Subject("s2", "IT202", "Cấu trúc dữ liệu & Giải thuật", "CNTT", "Khoa Công nghệ thông tin", 3, 18),
-    Subject("s3", "IT305", "Cơ sở dữ liệu", "CNTT", "Khoa Công nghệ thông tin", 3, 15),
-    Subject("s4", "IT410", "Lập trình Web", "CNTT", "Khoa Công nghệ thông tin", 3, 12),
-    Subject("s5", "IT420", "Kiến trúc phần mềm", "CNTT", "Khoa Công nghệ thông tin", 3, 8),
-    Subject("s6", "IT501", "Trí tuệ nhân tạo", "CNTT", "Khoa Công nghệ thông tin", 3, 10),
-    Subject("s7", "ECO101", "Kinh tế vi mô", "KT", "Khoa Kinh tế", 3, 16),
-    Subject("s8", "ECO202", "Kinh tế vĩ mô", "KT", "Khoa Kinh tế", 3, 14),
-    Subject("s9", "ACC301", "Kế toán tài chính", "KT", "Khoa Kinh tế", 3, 11),
-    Subject("s10", "ENG101", "Tiếng Anh cơ bản", "NN", "Khoa Ngoại ngữ", 4, 9),
-    Subject("s11", "ENG201", "Tiếng Anh chuyên ngành", "NN", "Khoa Ngoại ngữ", 4, 13),
-    Subject("s12", "ATC101", "Điều hành bay cơ bản", "DHB", "Khoa Điều hành bay", 4, 7),
-    Subject("s13", "ATC202", "Radar & Thủ tục", "DHB", "Khoa Điều hành bay", 4, 5),
-]
-
-MOCK_CLASSES: List[StudentClass] = [
-    StudentClass("c1", "D21CQCN01-B", "CNTT", "Khoa Công nghệ thông tin", "2021", 45),
-    StudentClass("c2", "D21CQCN02-B", "CNTT", "Khoa Công nghệ thông tin", "2021", 42),
-    StudentClass("c3", "D22CQCN01-B", "CNTT", "Khoa Công nghệ thông tin", "2022", 48),
-    StudentClass("c4", "D21CQKT01-B", "KT", "Khoa Kinh tế", "2021", 38),
-    StudentClass("c5", "D22CQKT01-B", "KT", "Khoa Kinh tế", "2022", 40),
-    StudentClass("c6", "D21CQNN01-B", "NN", "Khoa Ngoại ngữ", "2021", 32),
-    StudentClass("c7", "D21CQDHB01-B", "DHB", "Khoa Điều hành bay", "2021", 28),
-]
-
-
 # ─── State ────────────────────────────────────────────────────────────────────
 
 class OrgState(rx.State):
-    """Quản lý trang tổ chức: Khoa, Môn học, Lớp."""
+    """Quản lý trang tổ chức: Khoa, Môn học, Lớp - kết nối trực tiếp PostgreSQL via API."""
 
     active_tab: str = "departments"
-    departments: List[Department] = MOCK_DEPARTMENTS
-    subjects: List[Subject] = MOCK_SUBJECTS
-    classes: List[StudentClass] = MOCK_CLASSES
+    departments: List[Department] = []
+    subjects: List[Subject] = []
+    classes: List[StudentClass] = []
+    is_loading: bool = False
+    api_error: str = ""
     dept_search: str = ""
     subject_search: str = ""
     class_search: str = ""
@@ -192,23 +159,112 @@ class OrgState(rx.State):
     def set_dept_form_desc(self, v: str):
         self.dept_form_desc = v
 
-    def save_department(self):
-        if not self.dept_form_code.strip() or not self.dept_form_name.strip():
-            self.dept_form_error = "Mã Khoa và Tên Khoa không được để trống."
+    async def fetch_all(self):
+        """Nạp danh sách Khoa, Môn học, Lớp học thực tế từ PostgreSQL qua Django API."""
+        self.is_loading = True
+        self.api_error = ""
+        try:
+            auth = await self.get_state(AuthState)
+            headers = {}
+            if auth.auth_token:
+                headers["Authorization"] = f"Bearer {auth.auth_token}"
+
+            import httpx
+            async with httpx.AsyncClient() as client:
+                # 1. Departments
+                resp_d = await client.get("http://127.0.0.1:8000/api/departments/", headers=headers, timeout=5.0)
+                depts = []
+                if resp_d.status_code == 200:
+                    for d in resp_d.json().get("departments", []):
+                        did = str(d.get("department_id", ""))
+                        dname = d.get("department_name", "")
+                        depts.append(
+                            Department(
+                                id=did,
+                                code=f"K{did}",
+                                name=dname,
+                                description=f"Khoa {dname}",
+                                total_subjects=0,
+                                total_lecturers=0,
+                                total_students=0,
+                            )
+                        )
+                self.departments = depts
+
+                # 2. Subjects
+                resp_s = await client.get("http://127.0.0.1:8000/api/subjects/", headers=headers, timeout=5.0)
+                subjs = []
+                if resp_s.status_code == 200:
+                    for s in resp_s.json().get("subjects", []):
+                        sid = str(s.get("subject_id", ""))
+                        sname = s.get("subject_name", "")
+                        d_info = s.get("department", {})
+                        d_name = d_info.get("department_name", "") if isinstance(d_info, dict) else ""
+                        d_code = f"K{d_info.get('department_id', '')}" if isinstance(d_info, dict) else "CNTT"
+                        subjs.append(
+                            Subject(
+                                id=sid,
+                                code=f"MH{int(sid):02d}" if sid.isdigit() else sid,
+                                name=sname,
+                                department_code=d_code,
+                                department_name=d_name,
+                                credits=3,
+                                total_documents=0,
+                            )
+                        )
+                self.subjects = subjs
+
+                # 3. Classes
+                resp_c = await client.get("http://127.0.0.1:8000/api/classes/", headers=headers, timeout=5.0)
+                clss = []
+                if resp_c.status_code == 200:
+                    for c in resp_c.json().get("classes", []):
+                        cid = str(c.get("class_id", ""))
+                        cname = c.get("class_name", "")
+                        d_info = c.get("department", {})
+                        d_name = d_info.get("department_name", "") if isinstance(d_info, dict) else ""
+                        d_code = f"K{d_info.get('department_id', '')}" if isinstance(d_info, dict) else "CNTT"
+                        clss.append(
+                            StudentClass(
+                                id=cid,
+                                class_name=cname,
+                                department_code=d_code,
+                                department_name=d_name,
+                                year="2026",
+                                student_count=0,
+                            )
+                        )
+                self.classes = clss
+        except Exception as e:
+            self.api_error = f"Không thể kết nối đến máy chủ: {str(e)}"
+        finally:
+            self.is_loading = False
+
+    async def save_department(self):
+        if not self.dept_form_name.strip():
+            self.dept_form_error = "Tên Khoa không được để trống."
             return
-        existing = [d for d in self.departments if d.code == self.dept_form_code.strip().upper()]
-        if existing:
-            self.dept_form_error = f"Mã khoa '{self.dept_form_code}' đã tồn tại."
-            return
-        new_dept = Department(
-            id=f"d{len(self.departments)+1}",
-            code=self.dept_form_code.strip().upper(),
-            name=self.dept_form_name.strip(),
-            description=self.dept_form_desc.strip(),
-        )
-        self.departments.append(new_dept)
-        self.show_dept_modal = False
-        return rx.toast.success(f"Đã thêm Khoa '{self.dept_form_name}' thành công!")
+
+        auth = await self.get_state(AuthState)
+        headers = {}
+        if auth.auth_token:
+            headers["Authorization"] = f"Bearer {auth.auth_token}"
+
+        import httpx
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "http://127.0.0.1:8000/api/departments/",
+                json={"department_name": self.dept_form_name.strip()},
+                headers=headers,
+                timeout=5.0,
+            )
+            if resp.status_code == 201:
+                self.show_dept_modal = False
+                await self.fetch_all()
+                return rx.toast.success(f"Đã thêm Khoa '{self.dept_form_name}' vào PostgreSQL thành công!")
+            else:
+                err = resp.json().get("errors") or resp.json().get("message", "Lỗi tạo khoa.")
+                self.dept_form_error = str(err)
 
     # ── Subject CRUD ──
     def open_subject_modal(self):
@@ -234,23 +290,39 @@ class OrgState(rx.State):
     def set_subj_credits(self, v: str):
         self.subj_form_credits = v
 
-    def save_subject(self):
-        if not self.subj_form_code.strip() or not self.subj_form_name.strip():
-            self.subj_form_error = "Mã môn và Tên môn không được để trống."
+    async def save_subject(self):
+        if not self.subj_form_name.strip():
+            self.subj_form_error = "Tên môn học không được để trống."
             return
-        dept = next((d for d in self.departments if d.code == self.subj_form_dept), None)
-        dept_name = dept.name if dept else self.subj_form_dept
-        new_subj = Subject(
-            id=f"s{len(self.subjects)+1}",
-            code=self.subj_form_code.strip().upper(),
-            name=self.subj_form_name.strip(),
-            department_code=self.subj_form_dept,
-            department_name=dept_name,
-            credits=int(self.subj_form_credits) if self.subj_form_credits.isdigit() else 3,
-        )
-        self.subjects.append(new_subj)
-        self.show_subject_modal = False
-        return rx.toast.success(f"Đã thêm môn học '{self.subj_form_name}' thành công!")
+
+        auth = await self.get_state(AuthState)
+        headers = {}
+        if auth.auth_token:
+            headers["Authorization"] = f"Bearer {auth.auth_token}"
+
+        dept_id = 1
+        if self.departments:
+            match = next((d for d in self.departments if d.code == self.subj_form_dept or d.id == self.subj_form_dept), None)
+            if match and match.id.isdigit():
+                dept_id = int(match.id)
+            elif self.departments[0].id.isdigit():
+                dept_id = int(self.departments[0].id)
+
+        import httpx
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "http://127.0.0.1:8000/api/subjects/",
+                json={"subject_name": self.subj_form_name.strip(), "department_id": dept_id},
+                headers=headers,
+                timeout=5.0,
+            )
+            if resp.status_code == 201:
+                self.show_subject_modal = False
+                await self.fetch_all()
+                return rx.toast.success(f"Đã thêm môn học '{self.subj_form_name}' vào PostgreSQL thành công!")
+            else:
+                err = resp.json().get("errors") or resp.json().get("message", "Lỗi tạo môn học.")
+                self.subj_form_error = str(err)
 
     # ── Class CRUD ──
     def open_class_modal(self):
@@ -272,22 +344,39 @@ class OrgState(rx.State):
     def set_class_year(self, v: str):
         self.class_form_year = v
 
-    def save_class(self):
+    async def save_class(self):
         if not self.class_form_name.strip():
             self.class_form_error = "Tên lớp không được để trống."
             return
-        dept = next((d for d in self.departments if d.code == self.class_form_dept), None)
-        dept_name = dept.name if dept else self.class_form_dept
-        new_cls = StudentClass(
-            id=f"c{len(self.classes)+1}",
-            class_name=self.class_form_name.strip().upper(),
-            department_code=self.class_form_dept,
-            department_name=dept_name,
-            year=self.class_form_year,
-        )
-        self.classes.append(new_cls)
-        self.show_class_modal = False
-        return rx.toast.success(f"Đã thêm lớp '{self.class_form_name}' thành công!")
+
+        auth = await self.get_state(AuthState)
+        headers = {}
+        if auth.auth_token:
+            headers["Authorization"] = f"Bearer {auth.auth_token}"
+
+        dept_id = 1
+        if self.departments:
+            match = next((d for d in self.departments if d.code == self.class_form_dept or d.id == self.class_form_dept), None)
+            if match and match.id.isdigit():
+                dept_id = int(match.id)
+            elif self.departments[0].id.isdigit():
+                dept_id = int(self.departments[0].id)
+
+        import httpx
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "http://127.0.0.1:8000/api/classes/",
+                json={"class_name": self.class_form_name.strip().upper(), "department_id": dept_id, "is_locked": False},
+                headers=headers,
+                timeout=5.0,
+            )
+            if resp.status_code == 201:
+                self.show_class_modal = False
+                await self.fetch_all()
+                return rx.toast.success(f"Đã thêm lớp '{self.class_form_name}' vào PostgreSQL thành công!")
+            else:
+                err = resp.json().get("errors") or resp.json().get("message", "Lỗi tạo lớp.")
+                self.class_form_error = str(err)
 
     # ── Delete ──
     def open_delete(self, item_id: str, item_name: str, item_type: str):
@@ -299,16 +388,33 @@ class OrgState(rx.State):
     def cancel_delete(self):
         self.show_delete_dialog = False
 
-    def confirm_delete(self):
+    async def confirm_delete(self):
         name = self.delete_item_name
-        if self.delete_item_type == "dept":
-            self.departments = [d for d in self.departments if d.id != self.delete_item_id]
-        elif self.delete_item_type == "subject":
-            self.subjects = [s for s in self.subjects if s.id != self.delete_item_id]
-        elif self.delete_item_type == "class":
-            self.classes = [c for c in self.classes if c.id != self.delete_item_id]
-        self.show_delete_dialog = False
-        return rx.toast.success(f"Đã xóa '{name}' thành công!")
+        auth = await self.get_state(AuthState)
+        headers = {}
+        if auth.auth_token:
+            headers["Authorization"] = f"Bearer {auth.auth_token}"
+
+        endpoint_map = {
+            "dept": f"http://127.0.0.1:8000/api/departments/{self.delete_item_id}/",
+            "subject": f"http://127.0.0.1:8000/api/subjects/{self.delete_item_id}/",
+            "class": f"http://127.0.0.1:8000/api/classes/{self.delete_item_id}/",
+        }
+        url = endpoint_map.get(self.delete_item_type)
+        if not url:
+            self.show_delete_dialog = False
+            return
+
+        import httpx
+        async with httpx.AsyncClient() as client:
+            resp = await client.delete(url, headers=headers, timeout=5.0)
+            self.show_delete_dialog = False
+            if resp.status_code == 200:
+                await self.fetch_all()
+                return rx.toast.success(f"Đã xóa '{name}' khỏi PostgreSQL thành công!")
+            else:
+                msg = resp.json().get("message", "Không thể xóa mục này.")
+                return rx.toast.error(msg)
 
 
 # ─── UI Helpers ───────────────────────────────────────────────────────────────

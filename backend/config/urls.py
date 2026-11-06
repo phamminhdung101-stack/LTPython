@@ -20,8 +20,11 @@ from accounts.api_views import (
 )
 from academics.api_views import (
     DepartmentListAPIView,
+    DepartmentDetailAPIView,
     ClassListAPIView,
+    ClassDetailAPIView,
     SubjectListAPIView,
+    SubjectDetailAPIView,
 )
 from documents.api_views import (
     DocumentListCreateAPIView,
@@ -31,6 +34,9 @@ from documents.api_views import (
     DocumentRejectAPIView,
     DocumentPendingListAPIView,
     DocumentDownloadAPIView,
+    FolderListCreateAPIView,
+    ActivityLogListAPIView,
+    DashboardStatsAPIView,
 )
 from ai_search.api_views import (
     AIQueryAPIView,
@@ -56,8 +62,11 @@ api_patterns = [
 
     # Academics
     path('departments/', DepartmentListAPIView.as_view(), name='api_departments'),
+    path('departments/<int:pk>/', DepartmentDetailAPIView.as_view(), name='api_department_detail'),
     path('classes/', ClassListAPIView.as_view(), name='api_classes'),
+    path('classes/<int:pk>/', ClassDetailAPIView.as_view(), name='api_class_detail'),
     path('subjects/', SubjectListAPIView.as_view(), name='api_subjects'),
+    path('subjects/<int:pk>/', SubjectDetailAPIView.as_view(), name='api_subject_detail'),
 
     # Documents
     path('documents/', DocumentListCreateAPIView.as_view(), name='api_documents'),
@@ -67,6 +76,11 @@ api_patterns = [
     path('documents/<int:pk>/reject/', DocumentRejectAPIView.as_view(), name='api_document_reject'),
     path('documents/<int:pk>/download/', DocumentDownloadAPIView.as_view(), name='api_document_download'),
     path('documents/pending/', DocumentPendingListAPIView.as_view(), name='api_documents_pending'),
+    path('folders/', FolderListCreateAPIView.as_view(), name='api_folders'),
+    path('activity-logs/', ActivityLogListAPIView.as_view(), name='api_activity_logs'),
+
+    # Dashboard & Statistics
+    path('dashboard/stats/', DashboardStatsAPIView.as_view(), name='api_dashboard_stats'),
 
     # AI Search
     path('ai/query/', AIQueryAPIView.as_view(), name='api_ai_query'),

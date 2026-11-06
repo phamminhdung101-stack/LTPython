@@ -32,19 +32,6 @@ class AdminUser:
     avatar_fallback: str = "SV"
 
 
-# ─── Mock Data (sẽ thay bằng API call) ───────────────────────────────────────
-
-MOCK_USERS: List[AdminUser] = [
-    AdminUser("u1", "Quản trị viên hệ thống", "admin", "admin@docuni.edu.vn", "ADMIN", "CNTT", "", True, "2026-01-01", "AD"),
-    AdminUser("u2", "TS. Nguyễn Văn An", "gv.nguyenan", "nguyenan@docuni.edu.vn", "LECTURER", "CNTT", "", True, "2026-01-05", "NA"),
-    AdminUser("u3", "ThS. Lê Thị Bình", "gv.lethib", "lethib@docuni.edu.vn", "LECTURER", "KT", "", True, "2026-01-06", "LB"),
-    AdminUser("u4", "Lê Hoàng Nam", "sv.namle", "namle@vaa.edu.vn", "STUDENT", "CNTT", "D21CQCN01-B", True, "2026-09-01", "LN"),
-    AdminUser("u5", "Trần Thị Mai", "sv.tranm", "tranm@vaa.edu.vn", "STUDENT", "KT", "D21CQKT01-B", True, "2026-09-01", "TM"),
-    AdminUser("u6", "Phạm Minh Đức", "sv.phamd", "phamd@vaa.edu.vn", "STUDENT", "CNTT", "D22CQCN01-B", False, "2026-09-02", "PD"),
-    AdminUser("u7", "Nguyễn Thị Hoa", "sv.nguyen_hoa", "nguyen_hoa@vaa.edu.vn", "STUDENT", "NN", "D21CQNN01-B", True, "2026-09-03", "NH"),
-    AdminUser("u8", "ThS. Trần Quang Huy", "gv.tranhuy", "tranhuy@docuni.edu.vn", "LECTURER", "DHB", "", True, "2026-01-07", "TH"),
-]
-
 ROLE_OPTIONS = ["ADMIN", "LECTURER", "STUDENT"]
 DEPARTMENT_OPTIONS = ["CNTT", "KT", "NN", "DHB"]
 STATUS_OPTIONS = ["ACTIVE", "INACTIVE"]
@@ -53,9 +40,11 @@ STATUS_OPTIONS = ["ACTIVE", "INACTIVE"]
 # ─── Admin User State ─────────────────────────────────────────────────────────
 
 class AdminUserState(rx.State):
-    """Quản lý trang Quản lý người dùng."""
+    """Quản lý trang Quản lý người dùng, kết nối trực tiếp PostgreSQL via API."""
 
-    users: List[AdminUser] = MOCK_USERS
+    users: List[AdminUser] = []
+    is_loading: bool = False
+    api_error: str = ""
     search_query: str = ""
     filter_role: str = "ALL"
     filter_dept: str = "ALL"
@@ -202,7 +191,53 @@ class AdminUserState(rx.State):
     def toggle_form_active(self, v: bool):
         self.form_active = v
 
-    def save_user(self):
+    async def fetch_users(self):
+        """Tải danh sách người dùng thực tế từ PostgreSQL qua Django API."""
+        self.is_loading = True
+        self.api_error = ""
+        try:
+            auth = await self.get_state(AuthState)
+            headers = {}
+            if auth.auth_token:
+                headers["Authorization"] = f"Bearer {auth.auth_token}"
+
+            import httpx
+            async with httpx.AsyncClient() as client:
+                resp = await client.get("http://127.0.0.1:8000/api/users/", headers=headers, timeout=5.0)
+                if resp.status_code == 200:
+                    data = resp.json().get("users", [])
+                    user_list = []
+                    for item in data:
+                        dept = item.get("department", {})
+                        dept_name = dept.get("department_name", "") if isinstance(dept, dict) else str(dept or "")
+                        cls = item.get("student_class", {})
+                        class_name = cls.get("class_name", "") if isinstance(cls, dict) else str(cls or "")
+                        role_name = item.get("role_name", "STUDENT")
+                        full_name = item.get("full_name") or item.get("username", "")
+
+                        user_list.append(
+                            AdminUser(
+                                id=str(item.get("user_id", "")),
+                                full_name=full_name,
+                                username=item.get("username", ""),
+                                email=item.get("email", ""),
+                                role=role_name,
+                                department=dept_name,
+                                student_class=class_name,
+                                is_active=bool(item.get("is_active", True)),
+                                created_at=str(item.get("created_at", ""))[:10],
+                                avatar_fallback=full_name[:2].upper() if full_name else "US",
+                            )
+                        )
+                    self.users = user_list
+                else:
+                    self.api_error = f"Lỗi nạp dữ liệu người dùng ({resp.status_code})"
+        except Exception as e:
+            self.api_error = f"Không thể kết nối đến máy chủ: {str(e)}"
+        finally:
+            self.is_loading = False
+
+    async def save_user(self):
         # Basic validation
         if not self.form_full_name.strip():
             self.form_error = "Họ tên không được để trống."
@@ -214,58 +249,85 @@ class AdminUserState(rx.State):
             self.form_error = "Email không đúng định dạng."
             return
 
-        if self.is_create_mode:
-            if not self.form_password:
-                self.form_error = "Mật khẩu không được để trống khi tạo mới."
-                return
-            # Check duplicate username
-            existing = [u for u in self.users if u.username == self.form_username.strip()]
-            if existing:
-                self.form_error = f"Username '{self.form_username}' đã tồn tại."
-                return
-            new_user = AdminUser(
-                id=f"u{len(self.users) + 1}",
-                full_name=self.form_full_name.strip(),
-                username=self.form_username.strip(),
-                email=self.form_email.strip(),
-                role=self.form_role,
-                department=self.form_dept,
-                student_class=self.form_class,
-                is_active=self.form_active,
-                created_at=datetime.now().strftime("%Y-%m-%d"),
-                avatar_fallback=self.form_full_name.strip()[:2].upper(),
-            )
-            self.users.insert(0, new_user)
-            self.show_user_modal = False
-            return rx.toast.success(f"Đã thêm người dùng '{self.form_full_name}' thành công!")
-        else:
-            updated = []
-            for u in self.users:
-                if u.id == self.modal_user_id:
-                    u.full_name = self.form_full_name.strip()
-                    u.email = self.form_email.strip()
-                    u.role = self.form_role
-                    u.department = self.form_dept
-                    u.student_class = self.form_class
-                    u.is_active = self.form_active
-                    u.avatar_fallback = self.form_full_name.strip()[:2].upper()
-                updated.append(u)
-            self.users = updated
-            self.show_user_modal = False
-            return rx.toast.success(f"Đã cập nhật thông tin người dùng '{self.form_full_name}' thành công!")
+        auth = await self.get_state(AuthState)
+        headers = {}
+        if auth.auth_token:
+            headers["Authorization"] = f"Bearer {auth.auth_token}"
+
+        role_map = {"ADMIN": 1, "LECTURER": 2, "STUDENT": 3}
+        role_id = role_map.get(self.form_role, 3)
+
+        dept_map = {"CNTT": 1, "KT": 2, "NN": 3, "DHB": 1}
+        department_id = dept_map.get(self.form_dept, 1)
+
+        import httpx
+        async with httpx.AsyncClient() as client:
+            if self.is_create_mode:
+                if not self.form_password:
+                    self.form_error = "Mật khẩu không được để trống khi tạo mới."
+                    return
+                payload = {
+                    "username": self.form_username.strip(),
+                    "full_name": self.form_full_name.strip(),
+                    "email": self.form_email.strip(),
+                    "password": self.form_password,
+                    "role_id": role_id,
+                    "department_id": department_id,
+                    "is_active": self.form_active,
+                }
+                resp = await client.post("http://127.0.0.1:8000/api/users/", json=payload, headers=headers, timeout=5.0)
+                if resp.status_code == 201:
+                    self.show_user_modal = False
+                    await self.fetch_users()
+                    return rx.toast.success(f"Đã tạo tài khoản '{self.form_username}' trong PostgreSQL thành công!")
+                else:
+                    err = resp.json().get("errors") or resp.json().get("message", "Lỗi tạo tài khoản.")
+                    self.form_error = str(err)
+            else:
+                payload = {
+                    "full_name": self.form_full_name.strip(),
+                    "email": self.form_email.strip(),
+                    "role_id": role_id,
+                    "department_id": department_id,
+                    "is_active": self.form_active,
+                }
+                if self.form_password.strip():
+                    payload["password"] = self.form_password.strip()
+                resp = await client.patch(f"http://127.0.0.1:8000/api/users/{self.modal_user_id}/", json=payload, headers=headers, timeout=5.0)
+                if resp.status_code == 200:
+                    self.show_user_modal = False
+                    await self.fetch_users()
+                    return rx.toast.success(f"Đã cập nhật tài khoản '{self.form_username}' trong PostgreSQL thành công!")
+                else:
+                    err = resp.json().get("errors") or resp.json().get("message", "Lỗi cập nhật tài khoản.")
+                    self.form_error = str(err)
 
     # ── Toggle Account Status ──
-    def toggle_user_status(self, user_id: str):
-        updated = []
-        action = ""
-        for u in self.users:
-            if u.id == user_id:
-                u.is_active = not u.is_active
-                action = "Đã mở khóa" if u.is_active else "Đã khóa"
-                name = u.full_name
-            updated.append(u)
-        self.users = updated
-        return rx.toast.info(f"{action} tài khoản '{name}' thành công.")
+    async def toggle_user_status(self, user_id: str):
+        target = next((u for u in self.users if u.id == user_id), None)
+        if not target:
+            return
+        new_active = not target.is_active
+
+        auth = await self.get_state(AuthState)
+        headers = {}
+        if auth.auth_token:
+            headers["Authorization"] = f"Bearer {auth.auth_token}"
+
+        import httpx
+        async with httpx.AsyncClient() as client:
+            resp = await client.patch(
+                f"http://127.0.0.1:8000/api/users/{user_id}/",
+                json={"is_active": new_active},
+                headers=headers,
+                timeout=5.0,
+            )
+            if resp.status_code == 200:
+                await self.fetch_users()
+                action = "Đã mở khóa" if new_active else "Đã khóa"
+                return rx.toast.info(f"{action} tài khoản '{target.full_name}' thành công.")
+            else:
+                return rx.toast.error("Không thể thay đổi trạng thái tài khoản.")
 
     # ── Delete ──
     def open_delete_dialog(self, user_id: str, user_name: str):
@@ -277,12 +339,26 @@ class AdminUserState(rx.State):
         self.show_delete_dialog = False
         self.delete_user_id = ""
 
-    def confirm_delete(self):
-        name = self.delete_user_name
-        self.users = [u for u in self.users if u.id != self.delete_user_id]
-        self.show_delete_dialog = False
-        self.delete_user_id = ""
-        return rx.toast.success(f"Đã xóa người dùng '{name}' thành công!")
+    async def confirm_delete(self):
+        auth = await self.get_state(AuthState)
+        headers = {}
+        if auth.auth_token:
+            headers["Authorization"] = f"Bearer {auth.auth_token}"
+
+        import httpx
+        async with httpx.AsyncClient() as client:
+            resp = await client.delete(
+                f"http://127.0.0.1:8000/api/users/{self.delete_user_id}/",
+                headers=headers,
+                timeout=5.0,
+            )
+            self.show_delete_dialog = False
+            if resp.status_code == 200:
+                await self.fetch_users()
+                return rx.toast.success(f"Đã xóa người dùng '{self.delete_user_name}' khỏi PostgreSQL thành công!")
+            else:
+                msg = resp.json().get("message", "Không thể xóa tài khoản.")
+                return rx.toast.error(msg)
 
     # ── View Detail ──
     def open_detail(self, user: AdminUser):
@@ -940,26 +1016,52 @@ def admin_users_page() -> rx.Component:
                         rx.spacer(),
                         align="center", width="100%",
                     ),
-                    rx.table.root(
-                        rx.table.header(
-                            rx.table.row(
-                                *[
-                                    rx.table.column_header_cell(
-                                        rx.text(t, size="1", weight="bold", color="slate.10"),
-                                    )
-                                    for t in ["Người dùng", "Email", "Vai trò", "Khoa", "Lớp/Khóa", "Trạng thái", "Ngày tạo", "Thao tác"]
-                                ],
+                    rx.cond(
+                        AdminUserState.is_loading,
+                        rx.center(
+                            rx.hstack(
+                                rx.spinner(size="3"),
+                                rx.text("Đang tải dữ liệu từ PostgreSQL...", size="2", color="slate.9"),
+                                align="center",
+                                spacing="3",
+                                padding_y="8",
+                            ),
+                            width="100%",
+                        ),
+                        rx.cond(
+                            AdminUserState.filtered_users.length() == 0,
+                            rx.center(
+                                rx.vstack(
+                                    rx.icon("users", size=36, color="var(--slate-8)"),
+                                    rx.text("Không có tài khoản nào trong cơ sở dữ liệu.", size="2", color="slate.9"),
+                                    align="center",
+                                    spacing="2",
+                                    padding_y="8",
+                                ),
+                                width="100%",
+                            ),
+                            rx.table.root(
+                                rx.table.header(
+                                    rx.table.row(
+                                        *[
+                                            rx.table.column_header_cell(
+                                                rx.text(t, size="1", weight="bold", color="slate.10"),
+                                            )
+                                            for t in ["Người dùng", "Email", "Vai trò", "Khoa", "Lớp/Khóa", "Trạng thái", "Ngày tạo", "Thao tác"]
+                                        ],
+                                    ),
+                                ),
+                                rx.table.body(
+                                    rx.foreach(
+                                        AdminUserState.filtered_users,
+                                        user_table_row,
+                                    ),
+                                ),
+                                width="100%",
+                                variant="surface",
+                                size="2",
                             ),
                         ),
-                        rx.table.body(
-                            rx.foreach(
-                                AdminUserState.filtered_users,
-                                user_table_row,
-                            ),
-                        ),
-                        width="100%",
-                        variant="surface",
-                        size="2",
                     ),
                     spacing="3", width="100%",
                 ),

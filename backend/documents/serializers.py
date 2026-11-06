@@ -97,6 +97,26 @@ class DocumentSerializer(serializers.ModelSerializer):
         return f"/api/documents/{obj.document_id}/download/"
 
 
+class DocumentActivityLogSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.full_name', read_only=True, default='Hệ thống')
+    user_role = serializers.CharField(source='user.role_name', read_only=True, default='')
+    document_title = serializers.CharField(source='document.title', read_only=True, default='')
+
+    class Meta:
+        model = DocumentActivityLog
+        fields = [
+            'log_id',
+            'document_id',
+            'document_title',
+            'user_id',
+            'user_name',
+            'user_role',
+            'action',
+            'description',
+            'created_at',
+        ]
+
+
 class DocumentCreateSerializer(serializers.ModelSerializer):
     subject_id = serializers.IntegerField(required=True)
     folder_id = serializers.IntegerField(required=False, allow_null=True)
