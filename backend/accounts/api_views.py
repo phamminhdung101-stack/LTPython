@@ -1,335 +1,209 @@
+"""
+DocUni - REST API Quản Lý Tài Khoản & Người Dùng
+Phần 3:
+- POST /api/auth/login/ : Đăng nhập xác thực và trả về vai trò & quyền hạn
+- POST /api/auth/logout/ : Đăng xuất
+- GET  /api/auth/me/ : Lấy thông tin tài khoản hiện tại
+- GET  /api/users/ : Danh sách người dùng (Admin)
+- POST /api/users/ : Thêm người dùng mới kèm gán Lớp/Khoa/Vai trò
+- PATCH /api/users/<id>/toggle-status/ : Khóa/kích hoạt tài khoản người dùng
+"""
+
+import json
 from django.contrib.auth import authenticate, login, logout
-from django.db import connection
+from django.http import JsonResponse
+from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
+from django.shortcuts import get_object_or_404
 from django.db.models import Q
-from rest_framework import status
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from .models import User, Role
-from .serializers import (
-    UserSerializer,
-    LoginSerializer,
-    ChangePasswordSerializer,
-    UserCreateUpdateSerializer,
-    RoleSerializer,
-)
-from permissions.rest_permissions import (
-    IsAuthenticatedCustom,
-    IsAdminUserRole,
-    IsOwnerOrAdmin,
-)
-from .authentication import generate_jwt_token
+from academics.models import Department, Class
 
 
-class HealthCheckAPIView(APIView):
+def _json_error(message: str, status: int = 400, errors=None) -> JsonResponse:
+    payload = {'status': 'error', 'message': message}
+    if errors:
+        payload['errors'] = errors
+    return JsonResponse(payload, status=status, json_dumps_params={'ensure_ascii': False})
+
+
+def _json_ok(data=None, message: str = 'Thành công', status: int = 200) -> JsonResponse:
+    payload = {'status': 'ok', 'message': message}
+    if data is not None:
+        payload['data'] = data
+    return JsonResponse(payload, status=status, json_dumps_params={'ensure_ascii': False})
+
+
+# ─── AUTHENTICATION API ──────────────────────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def login_api(request):
     """
-    GET /api/health/
-    Kiểm tra tình trạng backend Django và kết nối trực tiếp đến PostgreSQL
+    API Đăng nhập:
+    Hỗ trợ nhận cả application/json và multipart/form-data.
     """
-    permission_classes = [AllowAny]
+    username = request.POST.get('username', '').strip()
+    password = request.POST.get('password', '')
 
-    def get(self, request):
+    if not username or not password:
         try:
-            connection.ensure_connection()
-            db_name = connection.settings_dict.get('NAME', 'unknown')
-            db_vendor = connection.vendor
-            return Response({
-                'status': 'healthy',
-                'backend': 'Django REST Framework',
-                'database': {
-                    'connected': True,
-                    'name': db_name,
-                    'vendor': db_vendor,
-                    'status': 'active',
-                }
-            }, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response({
-                'status': 'unhealthy',
-                'backend': 'Django REST Framework',
-                'database': {
-                    'connected': False,
-                    'error': str(e),
-                }
-            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            body = json.loads(request.body.decode('utf-8'))
+            username = body.get('username', '').strip()
+            password = body.get('password', '')
+        except Exception:
+            pass
+
+    if not username or not password:
+        return _json_error("Vui lòng cung cấp 'username' và 'password'.", 400)
+
+    user = authenticate(request, username=username, password=password)
+    if not user:
+        return _json_error("Tên đăng nhập hoặc mật khẩu không chính xác.", 401)
+
+    if not user.is_active:
+        return _json_error("Tài khoản của bạn đã bị vô hiệu hóa hoặc khóa.", 403)
+
+    login(request, user)
+
+    return _json_ok({
+        'user_id': user.id,
+        'username': user.username,
+        'full_name': user.full_name,
+        'role': user.role_name,
+        'is_admin': user.is_admin,
+        'is_lecturer': user.is_lecturer,
+        'is_student': user.is_student,
+        'department_id': user.department_id,
+        'department_name': user.department.department_name if user.department else None,
+        'class_id': user.student_class_id,
+        'class_name': user.student_class.class_name if user.student_class else None,
+    }, message=f"Đăng nhập thành công với vai trò {user.role_name}.")
 
 
-class LoginAPIView(APIView):
-    """
-    POST /api/auth/login/
-    Xác thực đăng nhập người dùng và tạo session
-    """
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        serializer = LoginSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response({
-                'status': 'error',
-                'errors': serializer.errors,
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        username = serializer.validated_data['username']
-        password = serializer.validated_data['password']
-
-        user = authenticate(request, username=username, password=password)
-        if user is None:
-            return Response({
-                'status': 'error',
-                'message': 'Tên đăng nhập hoặc mật khẩu không chính xác.',
-            }, status=status.HTTP_401_UNAUTHORIZED)
-
-        if not user.is_active:
-            return Response({
-                'status': 'error',
-                'message': 'Tài khoản của bạn hiện đang bị khóa hoặc chưa được kích hoạt.',
-            }, status=status.HTTP_403_FORBIDDEN)
-
-        # Lưu thông tin phiên đăng nhập
-        login(request, user)
-
-        token = generate_jwt_token(user)
-        user_data = UserSerializer(user).data
-        return Response({
-            'status': 'success',
-            'message': f'Xin chào {user.full_name}, đăng nhập thành công!',
-            'token': token,
-            'user': user_data,
-        }, status=status.HTTP_200_OK)
+@csrf_exempt
+@require_http_methods(["POST"])
+def logout_api(request):
+    logout(request)
+    return _json_ok(message="Đã đăng xuất thành công.")
 
 
-class LogoutAPIView(APIView):
-    """
-    POST /api/auth/logout/
-    Đăng xuất và hủy session hiện tại
-    """
-    permission_classes = [AllowAny]
+@require_http_methods(["GET"])
+def current_user_api(request):
+    user = request.user
+    if not user.is_authenticated:
+        return _json_error("Chưa đăng nhập.", 401)
 
-    def post(self, request):
-        if request.user.is_authenticated:
-            logout(request)
-        return Response({
-            'status': 'success',
-            'message': 'Đã đăng xuất thành công khỏi hệ thống.',
-        }, status=status.HTTP_200_OK)
-
-
-class CurrentUserAPIView(APIView):
-    """
-    GET /api/auth/me/
-    Lấy thông tin người dùng đang đăng nhập
-    """
-    permission_classes = [IsAuthenticatedCustom]
-
-    def get(self, request):
-        serializer = UserSerializer(request.user)
-        return Response({
-            'status': 'success',
-            'user': serializer.data,
-        }, status=status.HTTP_200_OK)
+    return _json_ok({
+        'user_id': user.id,
+        'username': user.username,
+        'full_name': user.full_name,
+        'role': user.role_name,
+        'department_name': user.department.department_name if user.department else None,
+        'class_name': user.student_class.class_name if user.student_class else None,
+    })
 
 
-class AuthStatusAPIView(APIView):
-    """
-    GET /api/auth/status/
-    Kiểm tra trạng thái đăng nhập
-    """
-    permission_classes = [AllowAny]
+# ─── USER MANAGEMENT API (ADMIN) ─────────────────────────────────────────────
 
-    def get(self, request):
-        is_auth = bool(request.user and request.user.is_authenticated)
-        user_data = UserSerializer(request.user).data if is_auth else None
-        return Response({
-            'is_authenticated': is_auth,
-            'user': user_data,
-        }, status=status.HTTP_200_OK)
-
-
-class ChangePasswordAPIView(APIView):
-    """
-    POST /api/auth/change-password/
-    Đổi mật khẩu cho tài khoản đang đăng nhập
-    """
-    permission_classes = [IsAuthenticatedCustom]
-
-    def post(self, request):
-        serializer = ChangePasswordSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response({
-                'status': 'error',
-                'errors': serializer.errors,
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        user = request.user
-        old_pwd = serializer.validated_data['old_password']
-        new_pwd = serializer.validated_data['new_password']
-
-        # Kiểm tra mật khẩu cũ
-        if not user.check_password(old_pwd):
-            return Response({
-                'status': 'error',
-                'message': 'Mật khẩu hiện tại không chính xác.',
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Lưu mật khẩu mới được băm bằng PBKDF2 của Django
-        user.set_password(new_pwd)
-        user.save(update_fields=['password'])
-
-        return Response({
-            'status': 'success',
-            'message': 'Đổi mật khẩu thành công. Vui lòng sử dụng mật khẩu mới cho các lần đăng nhập tiếp theo.',
-        }, status=status.HTTP_200_OK)
-
-
-class UserListCreateAPIView(APIView):
-    """
-    GET /api/users/ (Admin xem danh sách có lọc & tìm kiếm)
-    POST /api/users/ (Admin tạo người dùng mới)
-    """
-    permission_classes = [IsAdminUserRole]
-
-    def get(self, request):
-        qs = User.objects.select_related('role', 'department', 'student_class').order_by('user_id')
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def user_api(request):
+    # GET: Danh sách người dùng
+    if request.method == "GET":
+        qs = User.objects.select_related('role', 'department', 'student_class').order_by('-created_at')
 
         q = request.GET.get('q', '').strip()
-        role_filter = request.GET.get('role', '').strip()
-        dept_filter = request.GET.get('department', '').strip()
-        class_filter = request.GET.get('class', '').strip()
+        role = request.GET.get('role', '').strip()
+        dept_id = request.GET.get('department_id')
+        class_id = request.GET.get('class_id')
 
         if q:
-            qs = qs.filter(
-                Q(full_name__icontains=q) |
-                Q(username__icontains=q)
-            )
-        if role_filter and role_filter != 'ALL':
-            qs = qs.filter(role__role_name=role_filter)
-        if dept_filter and dept_filter != 'ALL':
-            if dept_filter.isdigit():
-                qs = qs.filter(department_id=int(dept_filter))
-            else:
-                qs = qs.filter(department__department_name__icontains=dept_filter)
-        if class_filter and class_filter != 'ALL':
-            if class_filter.isdigit():
-                qs = qs.filter(student_class_id=int(class_filter))
-            else:
-                qs = qs.filter(student_class__class_name__icontains=class_filter)
+            qs = qs.filter(Q(full_name__icontains=q) | Q(username__icontains=q))
+        if role:
+            qs = qs.filter(role__role_name=role.upper())
+        if dept_id:
+            qs = qs.filter(department_id=dept_id)
+        if class_id:
+            qs = qs.filter(student_class_id=class_id)
 
-        serializer = UserSerializer(qs, many=True)
-        return Response({
-            'status': 'success',
-            'total': qs.count(),
-            'users': serializer.data,
-        }, status=status.HTTP_200_OK)
+        data = [{
+            'user_id': u.id,
+            'username': u.username,
+            'full_name': u.full_name,
+            'role': u.role_name,
+            'department_id': u.department_id,
+            'department_name': u.department.department_name if u.department else None,
+            'class_id': u.student_class_id,
+            'class_name': u.student_class.class_name if u.student_class else None,
+            'is_active': u.is_active,
+            'created_at': u.created_at.strftime('%Y-%m-%d %H:%M'),
+        } for u in qs[:100]]
 
-    def post(self, request):
-        serializer = UserCreateUpdateSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response({
-                'status': 'error',
-                'errors': serializer.errors,
-            }, status=status.HTTP_400_BAD_REQUEST)
+        return _json_ok(data)
 
-        new_user = serializer.save()
-        return Response({
-            'status': 'success',
-            'message': f'Đã tạo người dùng {new_user.full_name} thành công.',
-            'user': UserSerializer(new_user).data,
-        }, status=status.HTTP_201_CREATED)
+    # POST: Tạo người dùng mới
+    if not (request.user.is_authenticated and getattr(request.user, 'is_admin', False)):
+        return _json_error("Chỉ Quản trị viên mới có quyền tạo người dùng.", 403)
 
-
-class UserDetailAPIView(APIView):
-    """
-    GET /api/users/<pk>/
-    PUT/PATCH /api/users/<pk>/
-    DELETE /api/users/<pk>/
-    """
-    permission_classes = [IsAuthenticatedCustom]
-
-    def get_object(self, pk):
+    data = request.POST
+    if not data:
         try:
-            return User.objects.select_related('role', 'department', 'student_class').get(pk=pk)
-        except User.DoesNotExist:
-            return None
+            data = json.loads(request.body.decode('utf-8'))
+        except Exception:
+            data = {}
 
-    def get(self, request, pk):
-        user = self.get_object(pk)
-        if not user:
-            return Response({'status': 'error', 'message': 'Không tìm thấy người dùng.'}, status=status.HTTP_404_NOT_FOUND)
+    username = data.get('username', '').strip()
+    full_name = data.get('full_name', '').strip()
+    password = data.get('password', '').strip() or '123456'
+    role_name = (data.get('role') or 'STUDENT').upper()
+    dept_id = data.get('department_id')
+    class_id = data.get('class_id')
 
-        # Chỉ Admin hoặc chính người dùng đó mới xem được
-        if not (request.user.is_admin or request.user.user_id == user.user_id):
-            return Response({'status': 'error', 'message': 'Bạn không có quyền xem thông tin người dùng này.'}, status=status.HTTP_403_FORBIDDEN)
+    if not username or not full_name:
+        return _json_error("Vui lòng nhập 'username' và 'full_name'.", 400)
 
-        return Response({
-            'status': 'success',
-            'user': UserSerializer(user).data,
-        }, status=status.HTTP_200_OK)
+    if User.objects.filter(username__iexact=username).exists():
+        return _json_error(f"Username '{username}' đã được sử dụng.", 400)
 
-    def put(self, request, pk):
-        return self.patch(request, pk)
+    role, _ = Role.objects.get_or_create(role_name=role_name)
+    dept = Department.objects.filter(pk=dept_id).first() if dept_id else None
+    student_class = Class.objects.filter(pk=class_id).first() if class_id else None
 
-    def patch(self, request, pk):
-        user = self.get_object(pk)
-        if not user:
-            return Response({'status': 'error', 'message': 'Không tìm thấy người dùng.'}, status=status.HTTP_404_NOT_FOUND)
+    user = User.objects.create_user(
+        username=username,
+        full_name=full_name,
+        role=role,
+        password=password,
+        department=dept,
+        student_class=student_class,
+    )
 
-        # Kiểm tra quyền: Admin hoặc chính chủ
-        is_self = request.user.user_id == user.user_id
-        if not (request.user.is_admin or is_self):
-            return Response({'status': 'error', 'message': 'Bạn không có quyền chỉnh sửa thông tin này.'}, status=status.HTTP_403_FORBIDDEN)
-
-        data = request.data.copy()
-
-        # Ngăn người dùng thông thường tự ý đổi role hoặc phòng ban
-        if not request.user.is_admin:
-            data.pop('role_id', None)
-            data.pop('role', None)
-            data.pop('department_id', None)
-            data.pop('class_id', None)
-
-        serializer = UserCreateUpdateSerializer(user, data=data, partial=True)
-        if not serializer.is_valid():
-            return Response({'status': 'error', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
-
-        updated_user = serializer.save()
-        return Response({
-            'status': 'success',
-            'message': 'Cập nhật thông tin thành công.',
-            'user': UserSerializer(updated_user).data,
-        }, status=status.HTTP_200_OK)
-
-    def delete(self, request, pk):
-        if not request.user.is_admin:
-            return Response({'status': 'error', 'message': 'Chỉ Quản trị viên mới có quyền xóa người dùng.'}, status=status.HTTP_403_FORBIDDEN)
-
-        user = self.get_object(pk)
-        if not user:
-            return Response({'status': 'error', 'message': 'Không tìm thấy người dùng.'}, status=status.HTTP_404_NOT_FOUND)
-
-        if user.user_id == request.user.user_id:
-            return Response({'status': 'error', 'message': 'Bạn không thể tự xóa tài khoản đang đăng nhập của chính mình.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        name = user.full_name
-        user.delete()
-        return Response({
-            'status': 'success',
-            'message': f'Đã xóa tài khoản {name} thành công.',
-        }, status=status.HTTP_200_OK)
+    return _json_ok({
+        'user_id': user.id,
+        'username': user.username,
+        'full_name': user.full_name,
+        'role': user.role_name,
+        'department_name': dept.department_name if dept else None,
+        'class_name': student_class.class_name if student_class else None,
+    }, message=f"Đã tạo người dùng '{user.full_name}' thành công.", status=201)
 
 
-class RoleListAPIView(APIView):
-    """
-    GET /api/roles/
-    Lấy danh sách các vai trò hệ thống
-    """
-    permission_classes = [AllowAny]
+@csrf_exempt
+@require_http_methods(["PATCH", "POST"])
+def user_toggle_status_api(request, pk):
+    """Khóa hoặc kích hoạt tài khoản."""
+    if not (request.user.is_authenticated and getattr(request.user, 'is_admin', False)):
+        return _json_error("Chỉ Quản trị viên mới có quyền khóa/mở khóa tài khoản.", 403)
 
-    def get(self, request):
-        roles = Role.objects.all().order_by('role_id')
-        serializer = RoleSerializer(roles, many=True)
-        return Response({
-            'status': 'success',
-            'roles': serializer.data,
-        }, status=status.HTTP_200_OK)
+    user = get_object_or_404(User, pk=pk)
+    user.is_active = not user.is_active
+    user.save(update_fields=['is_active'])
 
+    st = "kích hoạt" if user.is_active else "khóa"
+    return _json_ok({
+        'user_id': user.id,
+        'username': user.username,
+        'is_active': user.is_active,
+    }, message=f"Đã {st} tài khoản {user.username}.")

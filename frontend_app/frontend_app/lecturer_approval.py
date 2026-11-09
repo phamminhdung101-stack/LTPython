@@ -16,9 +16,8 @@ import dataclasses
 from datetime import datetime
 from typing import List, Dict, Any
 import reflex as rx
-import httpx
 from .common_components import lecturer_page_wrapper, status_badge
-from .auth import AuthState
+from .data_store import GlobalDocState
 
 
 # ─── Dataclass Models ────────────────────────────────────────────────────────
@@ -48,23 +47,164 @@ class PendingDoc:
     preview_text: str = ""
 
 
+# ─── Initial Mock Data ───────────────────────────────────────────────────────
+
+MOCK_PENDING_DOCS = [
+    PendingDoc(
+        id="pdoc_1",
+        title="Slide Tóm tắt Chương 5: Cây nhị phân và Cây AVL",
+        subject_code="IT202",
+        subject_name="Cấu trúc dữ liệu & GT",
+        faculty="CNTT",
+        proposed_folder="Slide Bài giảng",
+        doc_type="SLIDE",
+        type_label="Slide Bài giảng",
+        type_color="orange",
+        file_name="IT202_Slide_CayNhiPhan_AVL.pptx",
+        file_size="6.8 MB",
+        description="Em tổng hợp các thao tác xoay đơn LL, RR và xoay kép LR, RL trên cây AVL kèm mã giả thuật toán để các bạn dễ ôn thi.",
+        tags=["ctdl", "cay-avl", "slide", "it202"],
+        student_name="Lê Hoàng Nam",
+        student_id="2151010045",
+        student_class="D21CQCN01-B",
+        submitted_at="2026-10-13 08:30",
+        status="PENDING",
+        review_feedback="",
+        version="v1.0",
+        preview_text=(
+            "=== CHƯƠNG 5: CÂY NHỊ PHÂN TỰ CÂN BẰNG AVL ===\n\n"
+            "1. Định nghĩa Cây AVL:\n"
+            "Cây AVL là cây nhị phân tìm kiếm mà tại mỗi nút, chênh lệch chiều cao giữa cây con trái và cây con phải (hệ số cân bằng BF) không vượt quá 1:\n"
+            "   BF(v) = height(left) - height(right) ∈ {-1, 0, 1}\n\n"
+            "2. Các phép xoay cân bằng cơ bản:\n"
+            "• Phép xoay đơn LL: Mất cân bằng lệch trái-trái do chèn nút vào cây con trái của nút con trái. Thực hiện xoay phải tại gốc mất cân bằng.\n"
+            "• Phép xoay đơn RR: Mất cân bằng lệch phải-phải. Thực hiện xoay trái tại gốc mất cân bằng.\n"
+            "• Phép xoay kép LR: Mất cân bằng lệch trái-phải. Thực hiện xoay trái tại con trái, sau đó xoay phải tại gốc.\n"
+            "• Phép xoay kép RL: Mất cân bằng lệch phải-trái. Thực hiện xoay phải tại con phải, sau đó xoay trái tại gốc.\n\n"
+            "3. Độ phức tạp:\n"
+            "Thao tác tìm kiếm, chèn, xóa trên cây AVL luôn được đảm bảo ở mức tối ưu O(log n)."
+        ),
+    ),
+    PendingDoc(
+        id="pdoc_2",
+        title="Bộ 50 câu trắc nghiệm Ôn thi Kinh tế vi mô có giải thích",
+        subject_code="ECO101",
+        subject_name="Kinh tế vi mô",
+        faculty="KT",
+        proposed_folder="Đề thi & Đáp án",
+        doc_type="EXAM",
+        type_label="Đề thi & Đáp án",
+        type_color="red",
+        file_name="TracNghiem_KTVM_50Cau_GiaiThich.pdf",
+        file_size="3.4 MB",
+        description="Tổng hợp câu hỏi trắc nghiệm về độ co giãn, thặng dư tiêu dùng, cân bằng thị trường có giải thích chi tiết đáp án.",
+        tags=["ktvm", "trac-nghiem", "eco101"],
+        student_name="Trần Thị Mai",
+        student_id="2152010112",
+        student_class="D21CQKT02-B",
+        submitted_at="2026-10-12 17:15",
+        status="PENDING",
+        review_feedback="",
+        version="v1.0",
+        preview_text=(
+            "=== 50 CÂU TRẮC NGHIỆM KINH TẾ VI MÔ ÔN THI CUỐI KỲ ===\n\n"
+            "Câu 1: Khi giá hàng hóa X tăng 10% làm lượng cầu hàng hóa Y tăng 15%, hệ số co giãn chéo Exy là:\n"
+            "A. -1.5\n"
+            "B. +1.5 (Đáp án đúng)\n"
+            "C. +0.67\n"
+            "D. -0.67\n"
+            "=> Giải thích: Exy = %ΔQy / %ΔPx = 15% / 10% = +1.5 > 0 => X và Y là hai hàng hóa thay thế cho nhau.\n\n"
+            "Câu 2: Đường giới hạn khả năng sản xuất (PPF) dịch chuyển ra phía ngoài khi:\n"
+            "A. Tỷ lệ thất nghiệp trong nền kinh tế tăng cao\n"
+            "B. Nền kinh tế xảy ra lạm phát mạnh\n"
+            "C. Có sự cải tiến công nghệ hoặc tăng nguồn lực sản xuất (Đáp án đúng)\n"
+            "D. Chính phủ áp đặt mức giá trần đối với lương thực"
+        ),
+    ),
+    PendingDoc(
+        id="pdoc_3",
+        title="Bài tập lớn & Script SQL Quản lý chuỗi cửa hàng tiện lợi",
+        subject_code="IT305",
+        subject_name="Cơ sở dữ liệu",
+        faculty="CNTT",
+        proposed_folder="Bài tập & Đồ án",
+        doc_type="EXERCISE",
+        type_label="Bài tập lớn",
+        type_color="purple",
+        file_name="BTL_SQL_QLCuaHangTienLoi.sql",
+        file_size="1.9 MB",
+        description="Mã nguồn SQL tạo bảng, khóa chính, khóa ngoại và 15 stored procedures nghiệp vụ quản lý kho.",
+        tags=["csdl", "sql", "btl"],
+        student_name="Nguyễn Văn Hùng",
+        student_id="2151010088",
+        student_class="D21CQCN02-B",
+        submitted_at="2026-10-11 10:40",
+        status="REJECTED",
+        review_feedback="Mã nguồn SQL chưa có lệnh tạo Index cho các bảng có hơn 100k bản ghi. Vui lòng bổ sung lược đồ quan hệ và kịch bản test trước khi nộp lại.",
+        version="v1.0",
+        preview_text=(
+            "-- DATABASE SCHEMA: HE THONG QUAN LY CHUOI CUA HANG TIEN LOI\n"
+            "-- TAC GIA: NGUYEN VAN HUNG - D21CQCN02-B\n\n"
+            "CREATE TABLE Categories (\n"
+            "    CategoryID INT PRIMARY KEY IDENTITY(1,1),\n"
+            "    CategoryName NVARCHAR(100) NOT NULL,\n"
+            "    Description NVARCHAR(255)\n"
+            ");\n\n"
+            "CREATE TABLE Products (\n"
+            "    ProductID INT PRIMARY KEY IDENTITY(1,1),\n"
+            "    ProductName NVARCHAR(150) NOT NULL,\n"
+            "    CategoryID INT FOREIGN KEY REFERENCES Categories(CategoryID),\n"
+            "    UnitPrice DECIMAL(18,2) NOT NULL,\n"
+            "    UnitsInStock INT DEFAULT 0\n"
+            ");"
+        ),
+    ),
+    PendingDoc(
+        id="pdoc_4",
+        title="Sổ tay Từ vựng Chuyên ngành Tiếng Anh Hàng không ICAO",
+        subject_code="ENG201",
+        subject_name="Tiếng Anh chuyên ngành",
+        faculty="NN",
+        proposed_folder="Sách tham khảo",
+        doc_type="REFERENCE",
+        type_label="Tham khảo",
+        type_color="green",
+        file_name="Aviation_English_Vocabulary_ICAO.pdf",
+        file_size="5.2 MB",
+        description="Sổ tay tra cứu 300 thuật ngữ thoại buồng lái và kiểm soát không lưu chuẩn hóa ICAO.",
+        tags=["tieng-anh", "hang-khong", "icao"],
+        student_name="Phạm Minh Đức",
+        student_id="2253010023",
+        student_class="D22CQNN01-B",
+        submitted_at="2026-10-10 14:00",
+        status="APPROVED",
+        review_feedback="Tài liệu chất lượng cao, định dạng rõ ràng, phù hợp làm tài liệu học phần tham khảo bổ trợ.",
+        version="v1.0",
+        preview_text=(
+            "=== SỔ TAY THUẬT NGỮ THOẠI HÀNG KHÔNG CHUẨN ICAO ===\n\n"
+            "1. ROGER: Đã nhận đầy đủ toàn bộ thông tin vừa phát.\n"
+            "2. WILCO: Đã hiểu và sẽ tuân thủ thực hiện huấn lệnh (Will Comply).\n"
+            "3. SAY AGAIN: Đề nghị nhắc lại toàn bộ hoặc một phần thông điệp.\n"
+            "4. HOLD POSITION: Dừng lại ngay tại vị trí hiện tại trên đường lăn.\n"
+            "5. EXPEDITE: Yêu cầu thực hiện thao tác nhanh hơn bình thường để đảm bảo giãn cách an toàn."
+        ),
+    ),
+]
+
+
 # ─── State ───────────────────────────────────────────────────────────────────
 
 class LecturerApprovalState(rx.State):
-    """Quản lý hàng đợi và thao tác phê duyệt tài liệu sinh viên đóng góp kết nối PostgreSQL."""
+    """Quản lý hàng đợi và thao tác phê duyệt tài liệu sinh viên đóng góp."""
 
-    items: List[PendingDoc] = []
-    selected_id: str = ""
+    items: List[PendingDoc] = MOCK_PENDING_DOCS
+    selected_id: str = "pdoc_1"
     filter_status: str = "PENDING"  # "ALL", "PENDING", "APPROVED", "REJECTED"
     search_query: str = ""
 
     # Reject Dialog State
     show_reject_dialog: bool = False
     reject_reason_input: str = ""
-    
-    # Loading & Error States
-    is_loading: bool = False
-    error_message: str = ""
 
     def set_search_query(self, value: str):
         self.search_query = value
@@ -80,134 +220,6 @@ class LecturerApprovalState(rx.State):
 
     def select_item(self, item_id: str):
         self.selected_id = item_id
-    
-    async def load_pending_queue(self):
-        """Load documents queue from PostgreSQL API."""
-        self.is_loading = True
-        self.error_message = ""
-        
-        try:
-            auth = await self.get_state(AuthState)
-            if not auth.auth_token:
-                self.error_message = "Chưa đăng nhập. Vui lòng đăng nhập lại."
-                self.is_loading = False
-                return
-            
-            headers = {"Authorization": f"Bearer {auth.auth_token}"}
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    "http://127.0.0.1:8000/api/documents/",
-                    headers=headers,
-                    timeout=10.0
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    docs = data.get("documents", [])
-                    
-                    pending_docs = []
-                    for doc in docs:
-                        doc_id = str(doc.get("document_id", doc.get("id", "")))
-                        title = doc.get("title", "Tài liệu không tên")
-                        desc = doc.get("description", "") or ""
-                        
-                        doc_type = "REFERENCE"
-                        type_label = "Tham khảo"
-                        type_color = "green"
-                        t_lower = title.lower()
-                        d_lower = desc.lower()
-                        
-                        if "slide" in t_lower or "bài giảng" in t_lower:
-                            doc_type = "SLIDE"
-                            type_label = "Slide Bài giảng"
-                            type_color = "orange"
-                        elif "đề thi" in t_lower or "exam" in t_lower:
-                            doc_type = "EXAM"
-                            type_label = "Đề thi & Đáp án"
-                            type_color = "red"
-                        elif "bài tập" in t_lower or "btl" in t_lower:
-                            doc_type = "EXERCISE"
-                            type_label = "Bài tập lớn"
-                            type_color = "purple"
-                        elif "sách" in t_lower or "giáo trình" in t_lower:
-                            doc_type = "TEXTBOOK"
-                            type_label = "Sách giáo trình"
-                            type_color = "blue"
-                        
-                        subj = doc.get("subject", {}) if isinstance(doc.get("subject"), dict) else {}
-                        dept = subj.get("department", {}) if isinstance(subj.get("department"), dict) else {}
-                        dept_name = dept.get("department_name", "")
-                        dept_id_val = str(dept.get("department_id", ""))
-                        dn = dept_name.lower()
-                        faculty = "CNTT"
-                        if dept_id_val == "2" or "kinh" in dn:
-                            faculty = "KT"
-                        elif dept_id_val == "3" or "ngoai" in dn:
-                            faculty = "NN"
-                        elif "dieu hanh" in dn or "điều hành" in dn or "dhb" in dn:
-                            faculty = "DHB"
-                        
-                        status = doc.get("status", "PENDING")
-                        student_name = doc.get("uploader_name") or "Sinh viên"
-                        student_id = f"SV{doc.get('uploader_id', '01')}"
-                        student_class = f"Khoa {dept_name}" if dept_name else "Đại trà"
-                        
-                        subject_code = f"SUBJ{subj.get('subject_id', '')}"
-                        subject_name = subj.get("subject_name", "Chưa phân môn")
-                        
-                        file_size_bytes = doc.get("file_size", 0) or 0
-                        if file_size_bytes > 1024*1024:
-                            file_size = f"{file_size_bytes / (1024*1024):.1f} MB"
-                        elif file_size_bytes > 1024:
-                            file_size = f"{file_size_bytes / 1024:.1f} KB"
-                        else:
-                            file_size = f"{file_size_bytes} B"
-                        
-                        uploaded_at = (doc.get("created_at") or "")[:16].replace("T", " ")
-                        tags = [t.get("tag_name") for t in doc.get("tags", [])] if isinstance(doc.get("tags"), list) else []
-                        
-                        pending_doc = PendingDoc(
-                            id=doc_id,
-                            title=title,
-                            subject_code=subject_code,
-                            subject_name=subject_name,
-                            faculty=faculty,
-                            proposed_folder="Tài liệu môn học",
-                            doc_type=doc_type,
-                            type_label=type_label,
-                            type_color=type_color,
-                            file_name=doc.get("original_file_name") or doc.get("file_name") or "document.pdf",
-                            file_size=file_size,
-                            description=desc,
-                            tags=tags,
-                            student_name=student_name,
-                            student_id=student_id,
-                            student_class=student_class,
-                            submitted_at=uploaded_at,
-                            status=status,
-                            review_feedback="Tài liệu đã được phê duyệt." if status == "APPROVED" else ("Tài liệu bị từ chối." if status == "REJECTED" else ""),
-                            version="v1.0",
-                            preview_text=desc or "Nội dung tóm tắt học liệu được lấy trực tiếp từ cơ sở dữ liệu PostgreSQL DocUni.",
-                        )
-                        pending_docs.append(pending_doc)
-                    
-                    self.items = pending_docs
-                    if pending_docs and not self.selected_id:
-                        self.selected_id = pending_docs[0].id
-                    
-                elif response.status_code == 401:
-                    self.error_message = "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại."
-                else:
-                    self.error_message = f"Lỗi tải dữ liệu: {response.status_code}"
-                    
-        except httpx.TimeoutException:
-            self.error_message = "Timeout: Không thể kết nối đến server."
-        except Exception as e:
-            self.error_message = f"Lỗi: {str(e)}"
-        finally:
-            self.is_loading = False
-            self.is_loading = False
 
     @rx.var
     def filtered_items(self) -> List[PendingDoc]:
@@ -232,8 +244,7 @@ class LecturerApprovalState(rx.State):
         for d in self.items:
             if d.id == self.selected_id:
                 return d
-        # Return empty doc if not found or no items
-        return PendingDoc()
+        return self.items[0] if self.items else PendingDoc()
 
     # Thống kê KPI
     @rx.var
@@ -261,40 +272,18 @@ class LecturerApprovalState(rx.State):
         return f"{int((approved / total) * 100)}%"
 
     # Thao tác Phê duyệt
-    async def approve_doc(self, item_id: str):
-        """Approve document via API."""
-        try:
-            auth = await self.get_state(AuthState)
-            if not auth.auth_token:
-                return rx.toast.error("Chưa đăng nhập. Vui lòng đăng nhập lại.")
-            
-            headers = {"Authorization": f"Bearer {auth.auth_token}"}
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"http://127.0.0.1:8000/api/documents/{item_id}/approve/",
-                    headers=headers,
-                    json={"approval_notes": "Tài liệu đạt chuẩn chất lượng, đã được giảng viên phê duyệt đưa vào kho học liệu."},
-                    timeout=10.0
-                )
-                
-                if response.status_code == 200:
-                    # Update local state
-                    updated = []
-                    for d in self.items:
-                        if d.id == item_id:
-                            d.status = "APPROVED"
-                            d.review_feedback = "Tài liệu đạt chuẩn chất lượng, đã được giảng viên phê duyệt đưa vào kho học liệu."
-                        updated.append(d)
-                    self.items = updated
-                    return rx.toast.success("Đã phê duyệt tài liệu! Học liệu đã được công khai trên kho.")
-                elif response.status_code == 401:
-                    return rx.toast.error("Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.")
-                else:
-                    return rx.toast.error(f"Lỗi phê duyệt: {response.status_code}")
-                    
-        except Exception as e:
-            return rx.toast.error(f"Lỗi kết nối: {str(e)}")
+    def approve_doc(self, item_id: str):
+        updated = []
+        for d in self.items:
+            if d.id == item_id:
+                d.status = "APPROVED"
+                d.review_feedback = "Tài liệu đạt chuẩn chất lượng, đã được giảng viên phê duyệt đưa vào kho học liệu."
+            updated.append(d)
+        self.items = updated
+        return [
+            GlobalDocState.approve_document(item_id),
+            rx.toast.success("Đã phê duyệt tài liệu! Học liệu đã được xuất bản công khai trên kho."),
+        ]
 
     # Thao tác Từ chối
     def open_reject_dialog(self, item_id: str):
@@ -306,48 +295,25 @@ class LecturerApprovalState(rx.State):
         self.show_reject_dialog = False
         self.reject_reason_input = ""
 
-    async def confirm_reject(self):
-        """Reject document via API."""
+    def confirm_reject(self):
         reason = self.reject_reason_input.strip()
         if not reason:
             return rx.toast.error("Vui lòng nhập lý do từ chối để phản hồi cho sinh viên!")
 
         doc_id = self.selected_id
-        
-        try:
-            auth = await self.get_state(AuthState)
-            if not auth.auth_token:
-                return rx.toast.error("Chưa đăng nhập. Vui lòng đăng nhập lại.")
-            
-            headers = {"Authorization": f"Bearer {auth.auth_token}"}
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"http://127.0.0.1:8000/api/documents/{doc_id}/reject/",
-                    headers=headers,
-                    json={"rejection_reason": reason},
-                    timeout=10.0
-                )
-                
-                if response.status_code == 200:
-                    # Update local state
-                    updated = []
-                    for d in self.items:
-                        if d.id == doc_id:
-                            d.status = "REJECTED"
-                            d.review_feedback = reason
-                        updated.append(d)
-                    self.items = updated
-                    self.show_reject_dialog = False
-                    self.reject_reason_input = ""
-                    return rx.toast.warning("Đã từ chối tài liệu và gửi phản hồi nhận xét cho sinh viên!")
-                elif response.status_code == 401:
-                    return rx.toast.error("Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.")
-                else:
-                    return rx.toast.error(f"Lỗi từ chối: {response.status_code}")
-                    
-        except Exception as e:
-            return rx.toast.error(f"Lỗi kết nối: {str(e)}")
+        updated = []
+        for d in self.items:
+            if d.id == doc_id:
+                d.status = "REJECTED"
+                d.review_feedback = reason
+            updated.append(d)
+        self.items = updated
+        self.show_reject_dialog = False
+        self.reject_reason_input = ""
+        return [
+            GlobalDocState.confirm_reject_document,
+            rx.toast.warning("Đã từ chối tài liệu và gửi phản hồi nhận xét cho sinh viên!"),
+        ]
 
 
 # ─── UI Helper Components ────────────────────────────────────────────────────
@@ -629,63 +595,18 @@ def lecturer_approval_page() -> rx.Component:
                     ),
 
                     # Danh sách thẻ hàng đợi cuộn mượt mà
-                    rx.cond(
-                        LecturerApprovalState.is_loading,
-                        rx.card(
-                            rx.center(
-                                rx.vstack(
-                                    rx.spinner(size="3", color="var(--blue-9)"),
-                                    rx.text("Đang tải hàng đợi kiểm duyệt...", size="2", color="slate.9"),
-                                    spacing="2",
-                                    align="center",
-                                ),
-                                padding="8",
+                    rx.box(
+                        rx.vstack(
+                            rx.foreach(
+                                LecturerApprovalState.filtered_items,
+                                queue_item_card,
                             ),
-                            variant="surface",
+                            spacing="2",
                             width="100%",
                         ),
-                        rx.cond(
-                            LecturerApprovalState.error_message != "",
-                            rx.card(
-                                rx.vstack(
-                                    rx.hstack(
-                                        rx.icon("alert-circle", size=16, color="var(--red-9)"),
-                                        rx.text("Lỗi tải dữ liệu", size="2", weight="bold", color="red.11"),
-                                        align="center",
-                                        spacing="2",
-                                    ),
-                                    rx.text(LecturerApprovalState.error_message, size="2", color="slate.11"),
-                                    rx.button(
-                                        rx.icon("refresh-cw", size=14),
-                                        "Thử lại",
-                                        size="2",
-                                        variant="soft",
-                                        color_scheme="blue",
-                                        on_click=LecturerApprovalState.load_pending_queue,
-                                    ),
-                                    spacing="2",
-                                    width="100%",
-                                ),
-                                variant="surface",
-                                bg="var(--red-2)",
-                                border="1px solid var(--red-5)",
-                                padding="4",
-                                width="100%",
-                            ),
-                            rx.box(
-                                rx.vstack(
-                                    rx.foreach(
-                                        LecturerApprovalState.filtered_items,
-                                        queue_item_card,
-                                    ),
-                                    spacing="2",
-                                    width="100%",
-                                ),
-                                max_height="620px",
-                                overflow_y="auto",
-                                width="100%",
-                            ),
-                        ),
+                        max_height="620px",
+                        overflow_y="auto",
+                        width="100%",
                     ),
 
                     spacing="3",
@@ -883,7 +804,7 @@ def lecturer_approval_page() -> rx.Component:
                                 color_scheme="gray",
                                 size="2",
                                 variant="surface",
-                                on_click=rx.toast.info(f"Đang tải tệp: {active.file_name}"),
+                                on_click=rx.download(url=f"/_upload/{active.file_name}"),
                             ),
                             align="center",
                             width="100%",

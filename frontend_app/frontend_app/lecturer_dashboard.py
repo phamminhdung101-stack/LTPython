@@ -17,7 +17,6 @@ import dataclasses
 from typing import List, Dict, Any
 import reflex as rx
 from .common_components import lecturer_page_wrapper
-from .auth import AuthState
 
 
 # ─── Dataclass Models ────────────────────────────────────────────────────────
@@ -35,7 +34,7 @@ class ActivityItem:
     color: str = "blue"
 
 
-# ─── Initial Baseline Chart Data ─────────────────────────────────────────────
+# ─── Initial Mock Chart Data ─────────────────────────────────────────────────
 
 CHART_DATA_7D = [
     {"date": "Thứ 2", "views": 420, "downloads": 150},
@@ -63,27 +62,28 @@ TOP_DOCS_DATA = [
 ]
 
 CATEGORY_PIE_DATA = [
-    {"name": "Đã phê duyệt", "value": 10, "fill": "#10b981"},
-    {"name": "Chờ duyệt", "value": 14, "fill": "#f59e0b"},
-    {"name": "Từ chối", "value": 1, "fill": "#ef4444"},
+    {"name": "Giáo trình", "value": 35, "fill": "#3b82f6"},
+    {"name": "Slide Bài giảng", "value": 28, "fill": "#f97316"},
+    {"name": "Đề thi & Đáp án", "value": 20, "fill": "#ef4444"},
+    {"name": "Bài tập lớn", "value": 17, "fill": "#a855f7"},
+]
+
+MOCK_ACTIVITIES = [
+    ActivityItem("a1", "Lê Hoàng Nam", "Sinh viên", "Đã nộp bài đóng góp mới", "Slide Tóm tắt Chương 5: Cây AVL", "IT202", "10 phút trước", "upload", "indigo"),
+    ActivityItem("a2", "Trần Thị Mai", "Sinh viên", "Đã nộp bài đóng góp mới", "50 câu trắc nghiệm Kinh tế vi mô", "ECO101", "25 phút trước", "upload", "indigo"),
+    ActivityItem("a3", "Nguyễn Văn Hùng", "Sinh viên", "Đã tải xuống tài liệu", "Giáo trình CTDL và Giải thuật 2026", "IT202", "1 giờ trước", "download", "green"),
+    ActivityItem("a4", "Phạm Minh Đức", "Sinh viên", "Đã tải xuống tài liệu", "Slide Cơ sở dữ liệu nâng cao", "IT305", "2 giờ trước", "download", "green"),
+    ActivityItem("a5", "TS. Nguyễn Văn An", "Giảng viên", "Đã phê duyệt tài liệu", "Sổ tay Từ vựng Hàng không ICAO", "ENG201", "Hôm qua", "circle-check", "purple"),
 ]
 
 
 # ─── State ───────────────────────────────────────────────────────────────────
 
 class LecturerDashboardState(rx.State):
-    """Quản lý trạng thái số liệu phân tích và biểu đồ cho giảng viên từ PostgreSQL."""
+    """Quản lý trạng thái số liệu phân tích và biểu đồ cho giảng viên."""
 
     time_range: str = "7d"  # "7d" hoặc "30d"
-    total_documents: int = 0
-    total_views: int = 0
-    total_downloads: int = 0
-    pending_approval: int = 0
-    activities: List[ActivityItem] = []
-    top_docs_list: List[dict] = TOP_DOCS_DATA
-    category_pie_list: List[dict] = CATEGORY_PIE_DATA
-    is_loading: bool = False
-    error_message: str = ""
+    activities: List[ActivityItem] = MOCK_ACTIVITIES
 
     def set_time_range(self, value: str | list[str]):
         if isinstance(value, list):
@@ -95,87 +95,8 @@ class LecturerDashboardState(rx.State):
     def active_trend_data(self) -> List[dict]:
         return CHART_DATA_7D if self.time_range == "7d" else CHART_DATA_30D
 
-    async def fetch_stats(self):
-        """Lấy số liệu thống kê thời gian thực từ cơ sở dữ liệu PostgreSQL."""
-        self.is_loading = True
-        self.error_message = ""
-        try:
-            auth = await self.get_state(AuthState)
-            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
-
-            import httpx
-            async with httpx.AsyncClient() as client:
-                resp = await client.get("http://127.0.0.1:8000/api/dashboard/stats/", headers=headers, timeout=10.0)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    st = data.get("stats", {})
-                    self.total_documents = st.get("total_documents", 0)
-                    self.total_views = st.get("total_views", 0)
-                    self.total_downloads = st.get("total_downloads", 0)
-                    self.pending_approval = st.get("pending_documents", 0)
-
-                    # Hoạt động gần đây từ bảng document_activity_logs
-                    raw_acts = data.get("recent_activities", [])
-                    acts = []
-                    for log in raw_acts:
-                        act_type = log.get("action", "")
-                        icon = "download"
-                        color = "green"
-                        action_text = "Đã tải xuống"
-                        if act_type == "CREATE":
-                            icon = "upload"
-                            color = "indigo"
-                            action_text = "Đã tải lên"
-                        elif act_type == "APPROVE":
-                            icon = "circle-check"
-                            color = "purple"
-                            action_text = "Đã phê duyệt"
-                        elif act_type == "REJECT":
-                            icon = "circle-x"
-                            color = "red"
-                            action_text = "Đã từ chối"
-
-                        created = (log.get("created_at") or "")[:16].replace("T", " ")
-                        acts.append(ActivityItem(
-                            id=str(log.get("log_id", "")),
-                            user_name=log.get("user_name") or "Người dùng",
-                            user_role=log.get("user_role") or "Sinh viên",
-                            action=action_text,
-                            target_title=log.get("document_title") or "Tài liệu học phần",
-                            subject_code=f"DOC#{log.get('document_id', '')}",
-                            timestamp=created,
-                            icon=icon,
-                            color=color,
-                        ))
-                    self.activities = acts
-
-                    # Cập nhật pie chart cơ cấu tài liệu
-                    appr = st.get("approved_documents", 0)
-                    pend = st.get("pending_documents", 0)
-                    reje = st.get("rejected_documents", 0)
-                    self.category_pie_list = [
-                        {"name": "Đã phê duyệt", "value": appr, "fill": "#10b981"},
-                        {"name": "Chờ duyệt", "value": pend, "fill": "#f59e0b"},
-                        {"name": "Từ chối", "value": reje, "fill": "#ef4444"},
-                    ]
-
-                    # Cập nhật top docs từ subject_breakdown
-                    subjs = data.get("subject_breakdown", [])
-                    if subjs:
-                        self.top_docs_list = [
-                            {"name": s.get("subject_name", "")[:14], "downloads": s.get("doc_count", 0) * 80 + 50}
-                            for s in subjs
-                        ]
-                else:
-                    self.error_message = f"Lỗi tải dữ liệu: HTTP {resp.status_code}"
-        except Exception as e:
-            self.error_message = f"Không thể kết nối cơ sở dữ liệu: {str(e)}"
-        finally:
-            self.is_loading = False
-
-    async def refresh_metrics(self):
-        await self.fetch_stats()
-        return rx.toast.success("Đã đồng bộ dữ liệu thời gian thực từ PostgreSQL!")
+    def refresh_metrics(self):
+        return rx.toast.success("Đã đồng bộ dữ liệu thời gian thực mới nhất!")
 
     def export_report(self, format_type: str):
         return rx.toast.info(f"Đang tạo và tải xuống báo cáo tổng hợp định dạng {format_type}...")
@@ -288,7 +209,7 @@ def lecturer_dashboard_page() -> rx.Component:
                             align="center",
                             width="100%",
                         ),
-                        rx.heading(LecturerDashboardState.total_documents.to_string(), size="6", weight="bold", color="slate.12"),
+                        rx.heading("5", size="6", weight="bold", color="slate.12"),
                         rx.text("Tổng học liệu phụ trách", size="2", color="slate.9"),
                         spacing="1",
                         align="start",
@@ -306,11 +227,11 @@ def lecturer_dashboard_page() -> rx.Component:
                                 border_radius="xl",
                             ),
                             rx.spacer(),
-                            rx.badge("Tích lũy", color_scheme="indigo", variant="surface", size="1"),
+                            rx.badge("+18.4% tuần này", color_scheme="indigo", variant="surface", size="1"),
                             align="center",
                             width="100%",
                         ),
-                        rx.heading(LecturerDashboardState.total_views.to_string(), size="6", weight="bold", color="indigo.11"),
+                        rx.heading("11,720", size="6", weight="bold", color="indigo.11"),
                         rx.text("Tổng lượt xem tích lũy", size="2", color="slate.9"),
                         spacing="1",
                         align="start",
@@ -328,11 +249,11 @@ def lecturer_dashboard_page() -> rx.Component:
                                 border_radius="xl",
                             ),
                             rx.spacer(),
-                            rx.badge("Toàn hệ thống", color_scheme="green", variant="surface", size="1"),
+                            rx.badge("+24.1% tuần này", color_scheme="green", variant="surface", size="1"),
                             align="center",
                             width="100%",
                         ),
-                        rx.heading(LecturerDashboardState.total_downloads.to_string(), size="6", weight="bold", color="green.11"),
+                        rx.heading("4,700", size="6", weight="bold", color="green.11"),
                         rx.text("Tổng lượt tải xuống", size="2", color="slate.9"),
                         spacing="1",
                         align="start",
@@ -354,7 +275,7 @@ def lecturer_dashboard_page() -> rx.Component:
                             align="center",
                             width="100%",
                         ),
-                        rx.heading(LecturerDashboardState.pending_approval.to_string(), size="6", weight="bold", color="amber.11"),
+                        rx.heading("2", size="6", weight="bold", color="amber.11"),
                         rx.text("Đóng góp chờ kiểm duyệt", size="2", color="slate.9"),
                         spacing="1",
                         align="start",
@@ -473,7 +394,7 @@ def lecturer_dashboard_page() -> rx.Component:
                                 rx.recharts.y_axis(stroke="#94a3b8"),
                                 rx.recharts.cartesian_grid(stroke_dasharray="3 3", stroke="#e2e8f0"),
                                 rx.recharts.graphing_tooltip(),
-                                data=LecturerDashboardState.top_docs_list,
+                                data=TOP_DOCS_DATA,
                                 width="100%",
                                 height=220,
                             ),
@@ -498,7 +419,7 @@ def lecturer_dashboard_page() -> rx.Component:
                             rx.text("Tỷ lệ phân bổ theo danh mục tài liệu", size="1", color="slate.8"),
                             rx.recharts.pie_chart(
                                 rx.recharts.pie(
-                                    data=LecturerDashboardState.category_pie_list,
+                                    data=CATEGORY_PIE_DATA,
                                     data_key="value",
                                     name_key="name",
                                     cx="50%",

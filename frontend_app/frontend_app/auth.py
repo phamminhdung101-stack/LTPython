@@ -36,81 +36,29 @@ class AuthState(rx.State):
     show_reg_password: bool = False
 
     # Session lưu trữ thông tin thực tế từ Django API & PostgreSQL
-    auth_token: str = rx.Cookie("")
     is_logged_in: bool = False
     current_user_id: int = 0
     current_user_name: str = ""
     current_user_role: str = ""
 
-    # --- Session Restoration ---
-    def restore_session_if_needed(self):
-        """Khôi phục phiên làm việc từ JWT token (cookie) nếu chưa có session trong bộ nhớ."""
-        if not self.is_logged_in and self.auth_token:
-            try:
-                import httpx
-                resp = httpx.get(
-                    "http://127.0.0.1:8000/api/auth/me/",
-                    headers={"Authorization": f"Bearer {self.auth_token}"},
-                    timeout=3.0
-                )
-                if resp.status_code == 200:
-                    data = resp.json().get("user", {})
-                    self.is_logged_in = True
-                    self.current_user_id = data.get("user_id", 0)
-                    self.current_user_name = data.get("full_name") or data.get("username", "")
-                    role_val = data.get("role_name")
-                    if not role_val and isinstance(data.get("role"), dict):
-                        role_val = data.get("role", {}).get("role_name")
-                    self.current_user_role = str(role_val or "STUDENT").upper()
-                else:
-                    self.is_logged_in = False
-                    self.auth_token = ""
-                    self.current_user_id = 0
-                    self.current_user_name = ""
-                    self.current_user_role = ""
-            except Exception:
-                pass
-
     # --- Role & Route Guards ---
     def check_auth(self):
         """Guard bảo vệ: Bắt buộc đăng nhập trước khi xem nội dung."""
-        self.restore_session_if_needed()
         if not self.is_logged_in:
             return rx.redirect("/login")
 
     def check_admin_auth(self):
         """Guard bảo vệ: Chỉ cho phép quản trị viên (ADMIN)."""
-        self.restore_session_if_needed()
-        if not self.is_logged_in:
+        if not self.is_logged_in or self.current_user_role != "ADMIN":
             return rx.redirect("/login")
-        if self.current_user_role != "ADMIN":
-            if self.current_user_role == "LECTURER":
-                return rx.redirect("/lecturer/dashboard")
-            return rx.redirect("/documents")
 
     def check_lecturer_auth(self):
         """Guard bảo vệ: Cho phép Giảng viên (LECTURER) hoặc Quản trị viên (ADMIN)."""
-        self.restore_session_if_needed()
-        if not self.is_logged_in:
+        if not self.is_logged_in or self.current_user_role not in ("LECTURER", "ADMIN"):
             return rx.redirect("/login")
-        if self.current_user_role not in ("LECTURER", "ADMIN"):
-            return rx.redirect("/documents")
-
-    def redirect_root(self):
-        """Guard cho route root '/': Chưa đăng nhập chuyển về /login, đã đăng nhập chuyển về dashboard theo role."""
-        self.restore_session_if_needed()
-        if not self.is_logged_in:
-            return rx.redirect("/login")
-        if self.current_user_role == "ADMIN":
-            return rx.redirect("/admin/users")
-        elif self.current_user_role == "LECTURER":
-            return rx.redirect("/lecturer/dashboard")
-        else:
-            return rx.redirect("/documents")
 
     def redirect_if_logged_in(self):
         """Nếu đã đăng nhập mà truy cập /login, điều hướng về trang theo vai trò thực tế."""
-        self.restore_session_if_needed()
         if self.is_logged_in:
             if self.current_user_role == "ADMIN":
                 return rx.redirect("/admin/users")
@@ -141,7 +89,6 @@ class AuthState(rx.State):
             self.login_error = "Vui lòng nhập mật khẩu."
             return
 
-        self.login_loading = True
         # Xác thực trực tiếp qua Django REST API kết nối PostgreSQL thật
         try:
             import httpx
@@ -150,11 +97,8 @@ class AuthState(rx.State):
                 json={"username": uname, "password": pwd},
                 timeout=5.0
             )
-            self.login_loading = False
             if resp.status_code == 200:
-                res_data = resp.json()
-                self.auth_token = res_data.get("token", "")
-                data = res_data.get("user", {})
+                data = resp.json().get("user", {})
                 self.is_logged_in = True
                 self.current_user_id = data.get("user_id", 0)
                 self.current_user_name = data.get("full_name") or uname
@@ -171,32 +115,21 @@ class AuthState(rx.State):
                     return rx.redirect("/lecturer/dashboard")
                 else:
                     return rx.redirect("/documents")
-            elif resp.status_code == 403:
-                res_data = resp.json()
-                self.login_error = res_data.get("message") or res_data.get("detail", "Tài khoản của bạn hiện đang bị khóa hoặc chưa được kích hoạt.")
-                return
             elif resp.status_code == 401:
-                res_data = resp.json()
-                self.login_error = res_data.get("message") or res_data.get("detail", "Tài khoản hoặc mật khẩu không chính xác.")
+                self.login_error = "Tài khoản hoặc mật khẩu không chính xác."
                 return
             else:
-                res_data = resp.json()
-                self.login_error = res_data.get("message") or res_data.get("detail", f"Lỗi xác thực ({resp.status_code}). Vui lòng thử lại.")
+                self.login_error = f"Lỗi xác thực ({resp.status_code}). Vui lòng thử lại."
                 return
         except Exception:
-            self.login_loading = False
             self.login_error = "Không thể kết nối đến máy chủ Django Backend (127.0.0.1:8000). Vui lòng đảm bảo backend đang chạy."
 
     def logout(self):
         try:
             import httpx
-            headers = {}
-            if self.auth_token:
-                headers["Authorization"] = f"Bearer {self.auth_token}"
-            httpx.post("http://127.0.0.1:8000/api/auth/logout/", headers=headers, timeout=2.0)
+            httpx.post("http://127.0.0.1:8000/api/auth/logout/", timeout=2.0)
         except Exception:
             pass
-        self.auth_token = ""
         self.is_logged_in = False
         self.current_user_id = 0
         self.current_user_name = ""
@@ -335,11 +268,10 @@ def login_page() -> rx.Component:
                     rx.callout.icon(rx.icon("info", size=14)),
                     rx.callout.text(
                         rx.vstack(
-                            rx.text("Tài khoản hệ thống (PostgreSQL thực tế):", size="1", weight="bold"),
-                            rx.text("• Quản trị viên: admin / admin123 (Role: ADMIN)", size="1"),
-                            rx.text("• Giảng viên: gv01 / gv123 (Role: LECTURER)", size="1"),
-                            rx.text("• Sinh viên: sv01 / sv123 (Role: STUDENT)", size="1"),
-                            rx.text("• Tài khoản khóa test 403: sv11 / sv123 (Lớp bị khóa)", size="1", color="red.9"),
+                            rx.text("Tài khoản demo:", size="1", weight="bold"),
+                            rx.text("admin / admin123 (Quản trị viên)", size="1"),
+                            rx.text("gv.nguyenan / gv123 (Giảng viên)", size="1"),
+                            rx.text("sv.namle / sv123 (Sinh viên)", size="1"),
                             spacing="0",
                         )
                     ),

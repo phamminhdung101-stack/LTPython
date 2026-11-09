@@ -1,1 +1,1 @@
-# Package initialization
+# DocUni Frontend Package

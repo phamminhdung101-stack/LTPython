@@ -3,63 +3,56 @@ from django.conf import settings
 
 
 class Tag(models.Model):
-    """Bảng tags trong PostgreSQL"""
-    tag_id = models.AutoField(primary_key=True)
+    id = models.AutoField(primary_key=True, db_column='tag_id')
     tag_name = models.CharField(max_length=100, unique=True)
 
     class Meta:
-        managed = False
         db_table = 'tags'
         verbose_name = 'Tag'
         verbose_name_plural = 'Tags'
-        ordering = ['tag_id']
+        ordering = ['tag_name']
 
     def __str__(self):
         return self.tag_name
 
 
 class Folder(models.Model):
-    """Bảng folders trong PostgreSQL"""
-    folder_id = models.AutoField(primary_key=True)
+    id = models.AutoField(primary_key=True, db_column='folder_id')
     folder_name = models.CharField(max_length=255)
     subject = models.ForeignKey(
         'academics.Subject',
         on_delete=models.CASCADE,
-        db_column='subject_id',
         related_name='folders',
+        db_column='subject_id',
     )
     parent_folder = models.ForeignKey(
         'self',
         on_delete=models.CASCADE,
-        db_column='parent_folder_id',
         null=True,
         blank=True,
         related_name='subfolders',
+        db_column='parent_folder_id',
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
-        db_column='created_by',
         null=True,
         blank=True,
-        related_name='created_folders',
+        db_column='created_by',
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        managed = False
         db_table = 'folders'
         verbose_name = 'Thư mục'
         verbose_name_plural = 'Thư mục'
-        unique_together = (('subject', 'parent_folder', 'folder_name'),)
-        ordering = ['folder_id']
+        unique_together = [('subject', 'parent_folder', 'folder_name')]
 
     def __str__(self):
         return self.folder_name
 
 
 class Document(models.Model):
-    """Bảng documents trong PostgreSQL"""
     PENDING = 'PENDING'
     APPROVED = 'APPROVED'
     REJECTED = 'REJECTED'
@@ -69,51 +62,53 @@ class Document(models.Model):
         (REJECTED, 'Từ chối'),
     ]
 
-    document_id = models.AutoField(primary_key=True)
+    id = models.AutoField(primary_key=True, db_column='document_id')
     title = models.CharField(max_length=255)
-    description = models.TextField(blank=True, null=True)
-
+    description = models.TextField(blank=True, default='')
     subject = models.ForeignKey(
         'academics.Subject',
         on_delete=models.CASCADE,
-        db_column='subject_id',
         related_name='documents',
+        db_column='subject_id',
     )
     folder = models.ForeignKey(
         Folder,
         on_delete=models.SET_NULL,
-        db_column='folder_id',
         null=True,
         blank=True,
         related_name='documents',
+        db_column='folder_id',
     )
     uploader = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
-        db_column='uploader_id',
         null=True,
         blank=True,
         related_name='uploaded_documents',
+        db_column='uploader_id',
     )
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default=PENDING)
     is_public = models.BooleanField(default=False)
-    view_count = models.IntegerField(default=0)
-    download_count = models.IntegerField(default=0)
+    view_count = models.PositiveIntegerField(default=0)
+    download_count = models.PositiveIntegerField(default=0)
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
-        db_column='approved_by',
         null=True,
         blank=True,
         related_name='approved_documents',
+        db_column='approved_by',
     )
     approved_at = models.DateTimeField(null=True, blank=True)
+    tags = models.ManyToManyField(
+        Tag,
+        blank=True,
+        related_name='documents',
+        db_table='document_tags',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
-    tags = models.ManyToManyField(Tag, through='DocumentTag', related_name='documents', blank=True)
-
     class Meta:
-        managed = False
         db_table = 'documents'
         verbose_name = 'Tài liệu'
         verbose_name_plural = 'Tài liệu'
@@ -123,141 +118,55 @@ class Document(models.Model):
         return self.title
 
     @property
-    def id(self):
-        return self.document_id
-
-    @property
     def latest_version(self):
         return self.versions.order_by('-version_number').first()
 
-    @property
-    def latest_metadata(self):
-        latest = self.latest_version
-        return latest.metadata_dict if latest else {}
-
-    @property
-    def file_name(self):
-        return self.latest_metadata.get('file_name', '')
-
-    @property
-    def original_file_name(self):
-        return self.latest_metadata.get('original_file_name', '')
-
-    @property
-    def file_type(self):
-        return self.latest_metadata.get('file_type', '')
-
-    @property
-    def file_size(self):
-        return self.latest_metadata.get('file_size', 0)
-
-    @property
-    def mime_type(self):
-        return self.latest_metadata.get('mime_type', '')
-
-    @property
-    def object_key(self):
-        latest = self.latest_version
-        return latest.file_path if latest else ''
-
-    @property
-    def storage_provider(self):
-        return self.latest_metadata.get('storage_provider', 'LOCAL')
-
-    @property
-    def department_id(self):
-        if self.subject_id and hasattr(self, 'subject') and self.subject:
-            return getattr(self.subject, 'department_id', None)
-        if self.uploader_id and hasattr(self, 'uploader') and self.uploader:
-            return getattr(self.uploader, 'department_id', None)
-        return None
-
-    @property
-    def class_id(self):
-        if self.uploader_id and hasattr(self, 'uploader') and self.uploader:
-            return getattr(self.uploader, 'class_id', None)
-        return None
-
-    @property
-    def upload_date(self):
-        return self.created_at
-
-    @property
-    def document_status(self):
-        return self.status
-
-
-class DocumentTag(models.Model):
-    """Bảng trung gian document_tags trong PostgreSQL"""
-    document = models.ForeignKey(Document, on_delete=models.CASCADE, db_column='document_id', primary_key=True)
-    tag = models.ForeignKey(Tag, on_delete=models.CASCADE, db_column='tag_id')
-
-    class Meta:
-        managed = False
-        db_table = 'document_tags'
-        unique_together = (('document', 'tag'),)
-
 
 class DocumentVersion(models.Model):
-    """Bảng document_versions trong PostgreSQL"""
-    version_id = models.AutoField(primary_key=True)
+    id = models.AutoField(primary_key=True, db_column='version_id')
     document = models.ForeignKey(
         Document,
         on_delete=models.CASCADE,
-        db_column='document_id',
         related_name='versions',
+        db_column='document_id',
     )
-    file_path = models.CharField(max_length=500)
-    version_number = models.IntegerField()
+    # Lưu Cloudflare R2 object key hoặc file path
+    file = models.CharField(max_length=500, db_column='file_path')
+    version_number = models.PositiveIntegerField()
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
-        db_column='updated_by',
         null=True,
         blank=True,
-        related_name='updated_versions',
+        db_column='updated_by',
     )
     updated_at = models.DateTimeField(auto_now_add=True)
-    change_summary = models.TextField(blank=True, null=True)
+    change_summary = models.TextField(blank=True, default='')
 
     class Meta:
-        managed = False
         db_table = 'document_versions'
         verbose_name = 'Phiên bản tài liệu'
         verbose_name_plural = 'Phiên bản tài liệu'
-        unique_together = (('document', 'version_number'),)
+        unique_together = [('document', 'version_number')]
         ordering = ['-version_number']
 
     def __str__(self):
         return f'{self.document.title} – v{self.version_number}'
 
     @property
-    def metadata_dict(self):
-        import json
-        if self.change_summary and self.change_summary.strip().startswith('{'):
-            try:
-                return json.loads(self.change_summary)
-            except Exception:
-                pass
-        filename = (self.file_path or '').split('/')[-1]
-        ext = filename.split('.')[-1].upper() if '.' in filename else ''
-        return {
-            'file_name': filename,
-            'original_file_name': filename,
-            'file_type': ext,
-            'file_size': 0,
-            'mime_type': 'application/octet-stream',
-            'object_key': self.file_path,
-            'storage_provider': 'LOCAL',
-        }
+    def file_path(self):
+        return self.file
 
     @property
     def object_key(self):
-        return self.file_path
+        return self.file
+
+    def get_download_url(self, expires_in=3600):
+        from .r2_service import r2_service
+        return r2_service.generate_download_url(self.object_key, expires_in=expires_in)
 
 
 class DocumentActivityLog(models.Model):
-    """Bảng document_activity_logs trong PostgreSQL"""
     ACTION_CHOICES = [
         ('CREATE', 'Tạo mới'),
         ('UPDATE', 'Cập nhật'),
@@ -271,27 +180,25 @@ class DocumentActivityLog(models.Model):
         ('REMOVE_TAG', 'Xóa tag'),
     ]
 
-    log_id = models.AutoField(primary_key=True)
+    id = models.AutoField(primary_key=True, db_column='log_id')
     document = models.ForeignKey(
         Document,
         on_delete=models.CASCADE,
-        db_column='document_id',
         related_name='activity_logs',
+        db_column='document_id',
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
-        db_column='user_id',
         null=True,
         blank=True,
-        related_name='activity_logs',
+        db_column='user_id',
     )
     action = models.CharField(max_length=100, choices=ACTION_CHOICES)
-    description = models.TextField(blank=True, null=True)
+    description = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        managed = False
         db_table = 'document_activity_logs'
         verbose_name = 'Nhật ký hoạt động'
         verbose_name_plural = 'Nhật ký hoạt động'

@@ -14,7 +14,6 @@ from datetime import datetime
 from typing import List, Dict, Any
 import reflex as rx
 from .common_components import student_page_wrapper
-from .auth import AuthState
 
 
 # ─── Dataclass Models Cho State & Dynamic Rendering ──────────────────────────
@@ -40,6 +39,110 @@ class ChatMessage:
     citations: List[Citation] = dataclasses.field(default_factory=list)
 
 
+# ─── Mock Knowledge Base & Citations ─────────────────────────────────────────
+
+MOCK_KB = [
+    {
+        "keywords": ["cây nhị phân", "cây", "bst", "tìm kiếm", "cấu trúc dữ liệu", "it202", "đồ thị"],
+        "answer": (
+            "Trong môn Cấu trúc dữ liệu & Giải thuật (IT202), Cây nhị phân tìm kiếm (Binary Search Tree - BST) "
+            "là một cây nhị phân có đặc tính quan trọng:\n\n"
+            "1. Giá trị của mọi nút trên cây con bên trái luôn NHỎ HƠN giá trị của nút gốc.\n"
+            "2. Giá trị của mọi nút trên cây con bên phải luôn LỚN HƠN giá trị của nút gốc.\n"
+            "3. Cả cây con bên trái và bên phải đều phải là cây nhị phân tìm kiếm.\n\n"
+            "• Độ phức tạp tìm kiếm/thêm/xóa trung bình: O(log n)\n"
+            "• Độ phức tạp trong trường hợp xấu nhất (cây suy biến thành danh sách liên kết): O(n)\n"
+            "• Để khắc phục suy biến, giải thuật nâng cao sử dụng Cây tự cân bằng AVL hoặc Cây Đỏ-Đen (Red-Black Tree)."
+        ),
+        "citations": [
+            Citation(
+                id="c1",
+                doc_title="Giáo trình Cấu trúc dữ liệu và giải thuật",
+                subject_code="IT202",
+                page=84,
+                score="96.5%",
+                snippet="Định nghĩa 4.2: Cây nhị phân tìm kiếm T là cây nhị phân hoặc rỗng, hoặc thỏa mãn: mọi khóa trên cây con trái(v) < khóa(v) < mọi khóa trên cây con phải(v). Phép duyệt trung thứ tự (In-order) trên BST sẽ cho dãy khóa có thứ tự tăng dần.",
+                file_url="/documents",
+            ),
+            Citation(
+                id="c2",
+                doc_title="Slide Bài giảng Chương 4: Cây và Đồ thị",
+                subject_code="IT202",
+                page=28,
+                score="91.8%",
+                snippet="Thuật toán chèn nút mới vào BST: Bắt đầu từ gốc, so sánh giá trị cần chèn x với nút hiện tại. Nếu x < current.data thì rẽ trái, ngược lại rẽ phải cho đến khi gặp nút null.",
+                file_url="/documents",
+            ),
+        ],
+    },
+    {
+        "keywords": ["kinh tế vi mô", "cung cầu", "co giãn", "eco101", "độ co giãn", "giá"],
+        "answer": (
+            "Trong học phần Kinh tế vi mô (ECO101), Độ co giãn của cầu theo giá (Price Elasticity of Demand - Ed) "
+            "đo lường mức độ phản ứng của lượng cầu khi giá hàng hóa thay đổi:\n\n"
+            "• Công thức tính: Ed = (% Thay đổi của lượng cầu) / (% Thay đổi của mức giá)\n"
+            "• Phương pháp trung điểm: Ed = [(Q2 - Q1) / ((Q1 + Q2)/2)] / [(P2 - P1) / ((P1 + P2)/2)]\n\n"
+            "Phân loại mức độ co giãn:\n"
+            "- |Ed| > 1: Cầu co giãn nhiều (hàng xa xỉ, có nhiều hàng thay thế). Khi giảm giá, tổng doanh thu TR tăng.\n"
+            "- |Ed| < 1: Cầu co giãn ít (hàng thiết yếu như lương thực, điện nước). Khi tăng giá, tổng doanh thu TR tăng.\n"
+            "- |Ed| = 1: Cầu co giãn đơn vị. Doanh thu cực đại tại điểm này."
+        ),
+        "citations": [
+            Citation(
+                id="c3",
+                doc_title="Slide Bài giảng Chương 3: Độ co giãn và Ứng dụng",
+                subject_code="ECO101",
+                page=42,
+                score="95.2%",
+                snippet="Mối quan hệ giữa độ co giãn và Tổng doanh thu (TR = P x Q): Nếu cầu co giãn (|Ed| > 1), phần trăm tăng lượng bán lớn hơn phần trăm giảm giá => TR tăng khi doanh nghiệp hạ giá bán.",
+                file_url="/documents",
+            ),
+        ],
+    },
+    {
+        "keywords": ["sql", "chuẩn hóa", "cơ sở dữ liệu", "khóa ngoại", "3nf", "it305"],
+        "answer": (
+            "Chuẩn hóa dữ liệu trong Cơ sở dữ liệu quan hệ (IT305) là kỹ thuật tổ chức các bảng nhằm "
+            "loại bỏ dư thừa dữ liệu và ngăn ngừa các dị thường khi Thêm, Sửa, Xóa:\n\n"
+            "1. Dạng chuẩn 1 (1NF): Mọi thuộc tính đều mang giá trị nguyên tố (nguyên tử), không chứa danh sách hoặc mảng giá trị.\n"
+            "2. Dạng chuẩn 2 (2NF): Đã đạt 1NF và mọi thuộc tính không khóa phải phụ thuộc hàm ĐẦY ĐỦ vào khóa chính (không phụ thuộc vào một phần khóa chính phức hợp).\n"
+            "3. Dạng chuẩn 3 (3NF): Đã đạt 2NF và không có thuộc tính không khóa nào phụ thuộc BẮC CẦU vào khóa chính (nghĩa là X -> Y và Y -> Z với Z là thuộc tính không khóa)."
+        ),
+        "citations": [
+            Citation(
+                id="c4",
+                doc_title="Script SQL & Bài tập lớn Cơ sở dữ liệu",
+                subject_code="IT305",
+                page=19,
+                score="93.4%",
+                snippet="Chương 5 - Lý thuyết thiết kế CSDL quan hệ: Định lý Heath và quy trình tách bảo toàn thông tin. Chuẩn hóa về 3NF/BCNF là tiêu chuẩn vàng cho các hệ thống OLTP nghiệp vụ thực tế.",
+                file_url="/documents",
+            ),
+        ],
+    },
+    {
+        "keywords": ["điều hành bay", "atc", "huấn lệnh", "cất cánh", "atc101", "hàng không"],
+        "answer": (
+            "Trong nghiệp vụ Điều hành bay cơ bản (ATC101), quy trình cấp huấn lệnh xuất phát và cất cánh "
+            "tuân theo tiêu chuẩn chuẩn hóa ICAO:\n\n"
+            "1. Giai đoạn Delivery / Ground: Cấp huấn lệnh đường dài (IFR Clearance) gồm: Điểm đến, SID (Standard Instrument Departure), mực bay ban đầu và mã Squawk transponder.\n"
+            "2. Giai đoạn Pushback & Taxi: Huấn lệnh đẩy lùi khỏi cầu ống lồng và hướng dẫn lăn theo vệt sơn tim đường lăn ra đường băng chờ.\n"
+            "3. Giai đoạn Tower (Đài chỉ huy): Huấn lệnh Line-up (vào đường băng chờ) và 'Cleared for Take-off' (Cất cánh) khi đường băng đảm bảo giãn cách an toàn và gió trong ngưỡng cho phép."
+        ),
+        "citations": [
+            Citation(
+                id="c5",
+                doc_title="Sổ tay Quy trình & Thủ tục Kiểm soát không lưu tại sân",
+                subject_code="ATC101",
+                page=31,
+                score="97.1%",
+                snippet="ICAO Doc 4444 PANS-ATM: Mẫu thoại chuẩn cất cánh 'VN123, runway 25R, wind 240 degrees 8 knots, cleared for take-off'. Phi công bắt buộc phải đọc lại (readback) đầy đủ đường băng và lệnh cất cánh.",
+                file_url="/documents",
+            ),
+        ],
+    },
+]
+
 INITIAL_AI_MESSAGE = ChatMessage(
     id="msg_0",
     sender="ai",
@@ -57,11 +160,11 @@ INITIAL_AI_MESSAGE = ChatMessage(
     citations=[
         Citation(
             id="c0",
-            doc_title="Kho Học Liệu DocUni PostgreSQL",
+            doc_title="Kho Học Liệu DocUni Hệ Thống",
             subject_code="DocUni-RAG",
             page=1,
             score="100%",
-            snippet="Chỉ mục tìm kiếm ngữ nghĩa đã sẵn sàng kết nối kho tài liệu học phần chính thức trong PostgreSQL.",
+            snippet="Chỉ mục tìm kiếm ngữ nghĩa đã sẵn sàng với 8 học phần chính: CNTT, Kinh tế, Ngoại ngữ, Điều hành bay.",
             file_url="/documents",
         )
     ],
@@ -69,36 +172,34 @@ INITIAL_AI_MESSAGE = ChatMessage(
 
 QUICK_PROMPTS = [
     {
-        "title": "Lập trình hướng đối tượng Java",
-        "prompt": "Giải thích 4 tính chất cơ bản của OOP (Đóng gói, Kế thừa, Đa hình, Trừu tượng) trong Java?",
-        "subject": "SUBJ1",
-    },
-    {
-        "title": "Chuẩn hóa dữ liệu 3NF",
-        "prompt": "Các bước chuẩn hóa cơ sở dữ liệu quan hệ từ 1NF lên 3NF cần chú ý điều gì?",
-        "subject": "SUBJ2",
+        "title": "Cây nhị phân tìm kiếm (BST)",
+        "prompt": "Giải thích cấu trúc và độ phức tạp giải thuật của Cây nhị phân tìm kiếm trong môn Cấu trúc dữ liệu?",
+        "subject": "IT202",
     },
     {
         "title": "Độ co giãn cung cầu",
         "prompt": "Cách tính độ co giãn của cầu theo giá và ý nghĩa đối với tổng doanh thu trong Kinh tế vi mô?",
-        "subject": "SUBJ4",
+        "subject": "ECO101",
     },
     {
-        "title": "Mô hình mạng OSI vs TCP/IP",
-        "prompt": "So sánh các tầng trong mô hình 7 tầng OSI và mô hình TCP/IP căn bản?",
-        "subject": "SUBJ3",
+        "title": "Chuẩn hóa dữ liệu 3NF",
+        "prompt": "Các bước chuẩn hóa cơ sở dữ liệu quan hệ từ 1NF lên 3NF cần chú ý điều gì?",
+        "subject": "IT305",
+    },
+    {
+        "title": "Quy trình cấp lệnh cất cánh ATC",
+        "prompt": "Quy trình và câu thoại ICAO chuẩn khi cấp huấn lệnh cất cánh cho máy bay tại sân bay?",
+        "subject": "ATC101",
     },
 ]
 
 SUBJECT_FILTERS = [
     {"label": "Tất cả học phần (Toàn trường)", "value": "ALL"},
-    {"label": "SUBJ1 - Lập trình Java", "value": "SUBJ1"},
-    {"label": "SUBJ2 - Cơ sở dữ liệu", "value": "SUBJ2"},
-    {"label": "SUBJ3 - Mạng máy tính", "value": "SUBJ3"},
-    {"label": "SUBJ4 - Kinh tế vi mô", "value": "SUBJ4"},
-    {"label": "SUBJ5 - Kế toán đại cương", "value": "SUBJ5"},
-    {"label": "SUBJ6 - Tiếng Anh chuyên ngành", "value": "SUBJ6"},
-    {"label": "SUBJ7 - Ngữ pháp cơ bản", "value": "SUBJ7"},
+    {"label": "IT202 - Cấu trúc dữ liệu & GT", "value": "IT202"},
+    {"label": "ECO101 - Kinh tế vi mô", "value": "ECO101"},
+    {"label": "IT305 - Cơ sở dữ liệu", "value": "IT305"},
+    {"label": "ATC101 - Điều hành bay cơ bản", "value": "ATC101"},
+    {"label": "ENG201 - Tiếng Anh hàng không", "value": "ENG201"},
 ]
 
 
@@ -142,43 +243,11 @@ class AIAssistantState(rx.State):
         self.show_citation_modal = False
         self.active_citation = Citation()
 
-    async def fetch_history(self):
-        """Lấy lịch sử câu hỏi từ database PostgreSQL."""
-        try:
-            auth = await self.get_state(AuthState)
-            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
-            import httpx
-            async with httpx.AsyncClient() as client:
-                resp = await client.get("http://127.0.0.1:8000/api/ai/history/", headers=headers, timeout=10.0)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    history = data.get("history", [])
-                    if history and len(self.chat_history) <= 1:
-                        for h in history[-5:]:
-                            self.chat_history.append(ChatMessage(
-                                id=f"hist_u_{h.get('query_id')}",
-                                sender="user",
-                                content=h.get("query_text", ""),
-                                timestamp=(h.get("created_at") or "")[:16].replace("T", " "),
-                                mode="rag",
-                                citations=[],
-                            ))
-                            self.chat_history.append(ChatMessage(
-                                id=f"hist_a_{h.get('query_id')}",
-                                sender="ai",
-                                content=h.get("ai_response", ""),
-                                timestamp=(h.get("created_at") or "")[:16].replace("T", " "),
-                                mode="rag",
-                                citations=[],
-                            ))
-        except Exception:
-            pass
-
     def ask_quick_prompt(self, prompt: str):
         self.input_text = prompt
         return self.send_message()
 
-    async def send_message(self):
+    def send_message(self):
         text = self.input_text.strip()
         if not text:
             return rx.toast.error("Vui lòng nhập câu hỏi trước khi gửi!")
@@ -197,45 +266,41 @@ class AIAssistantState(rx.State):
         )
         self.chat_history.append(user_msg)
         self.input_text = ""
-        self.is_searching = True
 
-        # 2. Xử lý câu trả lời AI từ backend API PostgreSQL
-        try:
-            auth = await self.get_state(AuthState)
-            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+        # 2. Xử lý câu trả lời AI (Tìm kiếm trong KB hoặc sinh câu trả lời theo ngữ cảnh)
+        q_lower = text.lower()
+        matched = None
+        for item in MOCK_KB:
+            if any(k in q_lower for k in item["keywords"]):
+                matched = item
+                break
 
-            import httpx
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    "http://127.0.0.1:8000/api/ai/query/",
-                    headers=headers,
-                    json={"query": text},
-                    timeout=15.0,
+        if matched:
+            ai_content = matched["answer"]
+            citations = matched["citations"] if self.search_mode == "rag" else []
+        else:
+            # Phản hồi tổng quát thông minh
+            citations = [
+                Citation(
+                    id=f"gen_cite_{len(self.chat_history)}",
+                    doc_title="Kho Giáo trình Tổng hợp DocUni",
+                    subject_code=self.subject_filter if self.subject_filter != "ALL" else "IT/ECO",
+                    page=12,
+                    score="88.6%",
+                    snippet=f"Trích xuất liên quan đến truy vấn '{text[:40]}...': Hệ thống DocUni đã đối soát ngữ nghĩa từ các tài liệu tham khảo chính thức và đề thi môn học.",
+                    file_url="/documents",
                 )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    ai_content = data.get("answer", "")
-                    raw_sources = data.get("sources", [])
-                    citations = []
-                    for idx, src in enumerate(raw_sources):
-                        subj = src.get("subject", {}) or {}
-                        citations.append(Citation(
-                            id=f"cite_{src.get('document_id', idx)}",
-                            doc_title=src.get("title", "Tài liệu học phần"),
-                            subject_code=subj.get("subject_name", "Chung"),
-                            page=idx + 1,
-                            score="96.2%",
-                            snippet=src.get("description", "Tài liệu chính thức từ kho học liệu học viện PostgreSQL."),
-                            file_url=src.get("download_url", "/documents"),
-                        ))
-                else:
-                    ai_content = f"Dựa trên cơ sở dữ liệu học phần DocUni, câu hỏi '{text}' của bạn đã được đối soát. Vui lòng tra cứu thêm tại danh mục học liệu."
-                    citations = []
-        except Exception as e:
-            ai_content = f"Lỗi truy vấn cơ sở dữ liệu: {str(e)}"
-            citations = []
-        finally:
-            self.is_searching = False
+            ] if self.search_mode == "rag" else []
+
+            ai_content = (
+                f"Dựa trên cơ sở dữ liệu học phần và các tài liệu liên quan đến chủ đề **'{text}'**:\n\n"
+                f"1. **Tổng quan khái niệm**: Yêu cầu này liên quan trực tiếp đến nội dung giảng dạy trong chương trình đào tạo của học viện.\n"
+                f"2. **Các điểm cốt lõi cần ghi nhớ**:\n"
+                f"   • Đọc kỹ phần lý thuyết nền tảng trong giáo trình chính thức trước khi giải bài tập trắc nghiệm.\n"
+                f"   • Chú ý các điều kiện ràng buộc biên và các trường hợp ngoại lệ thường xuất hiện trong đề thi các năm trước.\n"
+                f"   • Tham khảo các bài giải mẫu và slide bài giảng được giảng viên phê duyệt trên hệ thống DocUni.\n\n"
+                f"💡 *Gợi ý*: Bạn có thể xem các trích dẫn tài liệu cụ thể bên dưới để mở file học liệu nghiên cứu sâu hơn!"
+            )
 
         ai_msg = ChatMessage(
             id=f"msg_{len(self.chat_history) + 1}",

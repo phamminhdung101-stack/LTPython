@@ -14,7 +14,55 @@ State quản lý:
 import reflex as rx
 from typing import List
 from .common_components import student_page_wrapper
-from .auth import AuthState
+from .data_store import GlobalDocState
+from .storage_service import StorageService
+
+# ─── Dữ liệu Mock chuẩn theo database/schema.sql ────────────────────────────
+
+MOCK_DEPARTMENTS = [
+    {"id": "1", "name": "Khoa Công nghệ thông tin"},
+    {"id": "2", "name": "Khoa Kinh tế"},
+    {"id": "3", "name": "Khoa Ngoại ngữ"},
+    {"id": "4", "name": "Khoa Điều hành bay"},
+]
+
+MOCK_SUBJECTS = {
+    "1": [
+        {"id": "IT101", "name": "IT101 - Nhập môn lập trình"},
+        {"id": "IT202", "name": "IT202 - Cấu trúc dữ liệu & giải thuật"},
+        {"id": "IT305", "name": "IT305 - Cơ sở dữ liệu"},
+        {"id": "IT410", "name": "IT410 - Lập trình Web"},
+        {"id": "IT501", "name": "IT501 - Trí tuệ nhân tạo"},
+    ],
+    "2": [
+        {"id": "ECO101", "name": "ECO101 - Kinh tế vi mô"},
+        {"id": "ECO202", "name": "ECO202 - Kinh tế vĩ mô"},
+        {"id": "ACC301", "name": "ACC301 - Kế toán tài chính"},
+    ],
+    "3": [
+        {"id": "ENG101", "name": "ENG101 - Tiếng Anh cơ bản"},
+        {"id": "ENG201", "name": "ENG201 - Tiếng Anh chuyên ngành"},
+    ],
+    "4": [
+        {"id": "ATC101", "name": "ATC101 - Điều hành bay cơ bản"},
+        {"id": "ATC202", "name": "ATC202 - Radar & Thủ tục"},
+    ],
+}
+
+MOCK_FOLDERS = {
+    "IT101": ["Slide bài giảng", "Bài tập thực hành", "Đề thi & Đáp án", "Tài liệu tham khảo"],
+    "IT202": ["Giáo trình", "Slide bài giảng", "Bài tập lớn", "Đề thi & Đáp án"],
+    "IT305": ["Slide bài giảng", "Script SQL", "Đồ án", "Đề thi & Đáp án"],
+    "IT410": ["HTML/CSS/JS", "Backend Python", "Đồ án Web", "Tài liệu tham khảo"],
+    "IT501": ["Lý thuyết AI", "Machine Learning Labs", "Deep Learning", "Đề thi & Đáp án"],
+    "ECO101": ["Slide bài giảng", "Bài tập kinh tế", "Đề thi & Đáp án"],
+    "ECO202": ["Slide bài giảng", "Nghiên cứu tình huống", "Đề thi & Đáp án"],
+    "ACC301": ["Giáo trình", "Bài tập kế toán", "Báo cáo thực hành"],
+    "ENG101": ["Slide bài giảng", "Tài liệu đọc", "Bài kiểm tra"],
+    "ENG201": ["Tài liệu chuyên ngành", "Bài viết mẫu", "Đề thi & Đáp án"],
+    "ATC101": ["Slide bài giảng", "Manual Bay", "Bài kiểm tra"],
+    "ATC202": ["Radar Charts", "Thủ tục bay", "Đề thi & Đáp án"],
+}
 
 DOC_TYPES = [
     {"value": "SLIDE", "label": "Slide Bài giảng", "icon": "presentation"},
@@ -25,19 +73,15 @@ DOC_TYPES = [
     {"value": "OTHER", "label": "Loại khác", "icon": "file"},
 ]
 
-SUGGESTED_TAGS = ["python", "java", "csdl", "sql", "toán rời rạc", "mạng máy tính",
-                  "giữa kỳ", "cuối kỳ", "bài tập lớn", "thực hành", "lý thuyết", "đề cương"]
+SUGGESTED_TAGS = [
+    "Python", "Java", "CSDL", "SQL", "Toán rời rạc", "Mạng máy tính",
+    "Giữa kỳ", "Cuối kỳ", "Bài tập lớn", "Thực hành", "Lý thuyết", "Đề cương"
+]
 
 # ─── State ───────────────────────────────────────────────────────────────────
 
 class UploadState(rx.State):
-    """Quản lý toàn bộ logic trang Đóng góp tài liệu kết nối PostgreSQL."""
-
-    # Options fetched from PostgreSQL database
-    departments: List[dict] = []
-    subjects: List[dict] = []
-    folders: List[dict] = []
-    is_loading: bool = False
+    """Quản lý toàn bộ logic trang Đóng góp tài liệu."""
 
     # Form fields
     title: str = ""
@@ -63,78 +107,21 @@ class UploadState(rx.State):
     submit_success: bool = False
     error_message: str = ""
 
-    async def fetch_upload_options(self):
-        """Tải danh sách Khoa, Môn học và Thư mục thực tế từ PostgreSQL qua Django API."""
-        self.is_loading = True
-        self.error_message = ""
-        try:
-            auth = await self.get_state(AuthState)
-            headers = {}
-            if auth.auth_token:
-                headers["Authorization"] = f"Bearer {auth.auth_token}"
-
-            import httpx
-            async with httpx.AsyncClient() as client:
-                # 1. Tải danh sách Khoa
-                d_resp = await client.get("http://127.0.0.1:8000/api/departments/", headers=headers, timeout=10.0)
-                if d_resp.status_code == 200:
-                    d_data = d_resp.json()
-                    self.departments = [
-                        {"id": str(d.get("department_id")), "name": d.get("department_name")}
-                        for d in d_data.get("departments", [])
-                    ]
-
-                # 2. Tải danh sách Môn học
-                s_resp = await client.get("http://127.0.0.1:8000/api/subjects/", headers=headers, timeout=10.0)
-                if s_resp.status_code == 200:
-                    s_data = s_resp.json()
-                    raw_subjs = s_data.get("subjects", [])
-                    self.subjects = [
-                        {
-                            "id": str(s.get("subject_id")),
-                            "name": f"{s.get('subject_name')} (ID #{s.get('subject_id')})",
-                            "dept_id": str((s.get("department") or {}).get("department_id", "") if isinstance(s.get("department"), dict) else s.get("department_id", "")),
-                        }
-                        for s in raw_subjs
-                    ]
-
-                # 3. Tải danh sách Thư mục
-                f_resp = await client.get("http://127.0.0.1:8000/api/folders/", headers=headers, timeout=10.0)
-                if f_resp.status_code == 200:
-                    f_data = f_resp.json()
-                    self.folders = [
-                        {
-                            "id": str(f.get("folder_id")),
-                            "name": f.get("folder_name"),
-                            "subject_id": str(f.get("subject_id", "")),
-                        }
-                        for f in f_data.get("folders", [])
-                    ]
-        except Exception as e:
-            self.error_message = f"Lỗi tải danh mục từ cơ sở dữ liệu: {str(e)}"
-        finally:
-            self.is_loading = False
-
     @rx.var
     def available_subjects(self) -> List[dict]:
         if not self.selected_dept_id:
-            return self.subjects
-        return [s for s in self.subjects if s.get("dept_id") == self.selected_dept_id]
+            return []
+        return MOCK_SUBJECTS.get(self.selected_dept_id, [])
 
     @rx.var
     def available_folders(self) -> List[str]:
         if not self.selected_subject_id:
-            # Lấy tất cả tên folder độc nhất
-            names = list({f["name"] for f in self.folders if f.get("name")})
-            return names if names else ["Tài liệu chung", "Slide bài giảng", "Giáo trình", "Đề thi & Đáp án"]
-        matching = [f["name"] for f in self.folders if f.get("subject_id") == self.selected_subject_id]
-        if not matching:
-            return ["Tài liệu chung", "Slide bài giảng", "Giáo trình", "Đề thi & Đáp án"]
-        return matching
+            return []
+        return MOCK_FOLDERS.get(self.selected_subject_id, [])
 
     @rx.var
     def dept_options(self) -> List[dict]:
-        return self.departments
+        return MOCK_DEPARTMENTS
 
     @rx.var
     def is_form_valid(self) -> bool:
@@ -142,6 +129,7 @@ class UploadState(rx.State):
             len(self.title.strip()) >= 3
             and self.selected_dept_id != ""
             and self.selected_subject_id != ""
+            and self.selected_folder != ""
         )
 
     @rx.var
@@ -184,36 +172,18 @@ class UploadState(rx.State):
     def set_new_folder_name(self, value: str):
         self.new_folder_name = value
 
-    async def confirm_new_folder(self):
+    def confirm_new_folder(self):
         name = self.new_folder_name.strip()
-        if not name or not self.selected_subject_id:
-            return rx.toast.error("Vui lòng chọn môn học và nhập tên thư mục!")
-        try:
-            auth = await self.get_state(AuthState)
-            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
-            import httpx
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    "http://127.0.0.1:8000/api/folders/",
-                    headers=headers,
-                    json={"folder_name": name, "subject_id": int(self.selected_subject_id)},
-                    timeout=10.0,
-                )
-                if resp.status_code in (200, 201):
-                    new_f = resp.json().get("folder", {})
-                    self.folders.append({
-                        "id": str(new_f.get("folder_id", "")),
-                        "name": new_f.get("folder_name", name),
-                        "subject_id": str(self.selected_subject_id),
-                    })
-                    self.selected_folder = name
-                    self.show_new_folder_input = False
-                    self.new_folder_name = ""
-                    return rx.toast.success(f"Đã lưu thư mục mới vào database: {name}")
-                else:
-                    return rx.toast.error("Không thể tạo thư mục. Vui lòng kiểm tra quyền truy cập.")
-        except Exception as e:
-            return rx.toast.error(f"Lỗi: {str(e)}")
+        if not name:
+            return
+        subject_id = self.selected_subject_id
+        if subject_id and subject_id in MOCK_FOLDERS:
+            if name not in MOCK_FOLDERS[subject_id]:
+                MOCK_FOLDERS[subject_id].append(name)
+            self.selected_folder = name
+        self.show_new_folder_input = False
+        self.new_folder_name = ""
+        return rx.toast.success(f"Đã tạo thư mục mới: {name}")
 
     def set_tag_input(self, value: str):
         self.tag_input = value
@@ -235,90 +205,87 @@ class UploadState(rx.State):
         if files:
             f = files[0]
             self.uploaded_filename = f.filename
-            self.uploaded_filesize = "Tệp đã sẵn sàng"
+            self.uploaded_filesize = "Đã chọn từ máy"
             self.error_message = ""
 
     def clear_file(self):
         self.uploaded_filename = ""
         self.uploaded_filesize = ""
 
-    async def submit_contribution(self, files: list[rx.UploadFile] = None):
-        if not self.title.strip() or not self.selected_dept_id or not self.selected_subject_id:
-            self.error_message = "Vui lòng điền đầy đủ: Tiêu đề, Khoa, Môn học."
-            return rx.toast.error(self.error_message)
-
-        self.is_submitting = True
+    def quick_fill_sample(self):
+        self.title = "Tài liệu Ôn tập Cây AVL và BTL Web 2026"
+        self.selected_dept_id = "1"
+        self.selected_subject_id = "IT410"
+        self.selected_folder = "Backend Python"
+        self.doc_type = "EXERCISE"
+        self.description = "Tài liệu đóng góp tổng hợp lý thuyết, bài tập lớn và starter code thực hành môn Lập trình Web."
+        self.tags = ["Python", "Web", "Reflex", "BTL"]
+        self.uploaded_filename = "BTL_Web_Starter_DocUni.zip"
+        self.uploaded_filesize = "5.4 MB"
         self.error_message = ""
+        return rx.toast.info("Đã điền sẵn toàn bộ dữ liệu mẫu! Bạn chỉ cần cuộn xuống và bấm 'Gửi yêu cầu đóng góp'.")
 
-        try:
-            auth = await self.get_state(AuthState)
-            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+    async def submit_contribution(self, files: list[rx.UploadFile] = None):
+        file_url = ""
+        file_size = self.uploaded_filesize or "4.5 MB"
 
-            import httpx
-            # Tìm folder_id nếu có
-            matched_folder = next((f for f in self.folders if f["name"] == self.selected_folder), None)
-            folder_id = matched_folder["id"] if matched_folder else None
+        if files and len(files) > 0:
+            f = files[0]
+            data = await f.read()
+            clean_name, file_url, size_str = StorageService.save_file(f.filename, data)
+            self.uploaded_filename = clean_name
+            self.uploaded_filesize = size_str
+            file_size = size_str
 
-            # Ghép tags vào title hoặc description
-            desc = self.description.strip()
-            if self.tags:
-                desc = f"{desc}\nTags: {', '.join(self.tags)}" if desc else f"Tags: {', '.join(self.tags)}"
-
-            async with httpx.AsyncClient() as client:
-                if files and len(files) > 0:
-                    # Upload thực tế kèm file vật lý
-                    file_obj = files[0]
-                    file_bytes = await file_obj.read()
-                    data = {
-                        "title": self.title.strip(),
-                        "description": desc,
-                        "subject_id": str(self.selected_subject_id),
-                        "is_public": "true" if self.is_public else "false",
-                    }
-                    if folder_id:
-                        data["folder_id"] = str(folder_id)
-
-                    upload_files = {
-                        "file": (file_obj.filename, file_bytes, "application/octet-stream")
-                    }
-                    resp = await client.post(
-                        "http://127.0.0.1:8000/api/documents/upload/",
-                        headers=headers,
-                        data=data,
-                        files=upload_files,
-                        timeout=30.0,
-                    )
-                else:
-                    # Tạo document metadata lưu vào PostgreSQL
-                    payload = {
-                        "title": self.title.strip(),
-                        "description": desc,
-                        "subject_id": int(self.selected_subject_id),
-                        "is_public": self.is_public,
-                    }
-                    if folder_id and str(folder_id).isdigit():
-                        payload["folder_id"] = int(folder_id)
-
-                    resp = await client.post(
-                        "http://127.0.0.1:8000/api/documents/",
-                        headers=headers,
-                        json=payload,
-                        timeout=15.0,
-                    )
-
-                if resp.status_code in (200, 201):
-                    self.submit_success = True
-                    return rx.toast.success("Tài liệu đã được lưu vào cơ sở dữ liệu PostgreSQL! Đang chờ giảng viên kiểm duyệt.")
-                else:
-                    err = resp.json().get("message", f"Lỗi HTTP {resp.status_code}")
-                    self.error_message = f"Gửi tài liệu thất bại: {err}"
-                    return rx.toast.error(self.error_message)
-
-        except Exception as e:
-            self.error_message = f"Lỗi kết nối cơ sở dữ liệu: {str(e)}"
+        if not self.title.strip():
+            self.error_message = "Vui lòng nhập Tiêu đề tài liệu!"
             return rx.toast.error(self.error_message)
-        finally:
-            self.is_submitting = False
+        if not self.selected_dept_id:
+            self.error_message = "Vui lòng chọn Khoa phụ trách!"
+            return rx.toast.error(self.error_message)
+        if not self.selected_subject_id:
+            self.error_message = "Vui lòng chọn Môn học tương ứng!"
+            return rx.toast.error(self.error_message)
+        if not self.selected_folder:
+            self.error_message = "Vui lòng chọn Thư mục lưu trữ!"
+            return rx.toast.error(self.error_message)
+
+        if not self.uploaded_filename:
+            # Tạo tệp mẫu để có thể tải về
+            fname = f"{self.selected_subject_id}_TaiLieu_DongGop.pdf"
+            sample_content = (
+                f"=== TÀI LIỆU HỌC TẬP DOCUNI ===\n"
+                f"Tiêu đề: {self.title}\n"
+                f"Môn học: {self.selected_subject_id}\n"
+                f"Thư mục: {self.selected_folder}\n"
+                f"Mô tả: {self.description}\n"
+                f"Người đóng góp: Sinh viên DocUni\n"
+            ).encode("utf-8")
+            clean_name, file_url, size_str = StorageService.save_file(fname, sample_content)
+            self.uploaded_filename = clean_name
+            self.uploaded_filesize = size_str
+            file_size = size_str
+
+        fname = self.uploaded_filename
+        self.is_submitting = False
+        self.submit_success = True
+
+        return [
+            GlobalDocState.add_contribution(
+                title=self.title,
+                subject_code=self.selected_subject_id,
+                folder_name=self.selected_folder,
+                doc_type=self.doc_type,
+                tags=list(self.tags),
+                file_name=fname,
+                description=self.description,
+                is_public=self.is_public,
+                allowed_class="",
+                file_size=file_size,
+                file_url=file_url,
+            ),
+            rx.toast.success("Tài liệu đã được gửi thành công vào hàng đợi kiểm duyệt!"),
+        ]
 
     def reset_form(self):
         self.title = ""
@@ -390,29 +357,26 @@ def tag_chip(tag: str) -> rx.Component:
 
 
 def upload_zone() -> rx.Component:
-    return rx.cond(
-        UploadState.uploaded_filename == "",
-        # Empty state: show drop zone
+    return rx.vstack(
         rx.upload(
             rx.box(
                 rx.vstack(
-                    rx.icon("cloud-upload", size=40, color="var(--blue-8)"),
-                    rx.text("Kéo & thả tệp vào đây", size="3", weight="bold", color="slate.11"),
-                    rx.text("hoặc", size="2", color="slate.9"),
+                    rx.icon("cloud-upload", size=36, color="var(--blue-8)"),
+                    rx.text("Kéo & thả tệp vào đây hoặc", size="2", weight="bold", color="slate.11"),
                     rx.button(
-                        rx.icon("folder-open", size=16),
+                        rx.icon("folder-open", size=15),
                         "Chọn tệp từ máy tính",
                         size="2",
                         variant="surface",
                         color_scheme="blue",
                     ),
                     rx.text("Hỗ trợ: PDF, DOCX, PPTX, XLSX, ZIP (≤ 50 MB)", size="1", color="slate.8"),
-                    spacing="3",
+                    spacing="2",
                     align="center",
                 ),
                 border="2px dashed var(--blue-6)",
                 border_radius="xl",
-                padding="10",
+                padding="8",
                 bg="var(--blue-1)",
                 _hover={"border_color": "var(--blue-8)", "bg": "var(--blue-2)"},
                 transition="all 0.2s ease",
@@ -428,42 +392,59 @@ def upload_zone() -> rx.Component:
                 "application/zip": [".zip"],
             },
             multiple=False,
-            
             width="100%",
         ),
-        # File selected state
-        rx.box(
-            rx.hstack(
-                rx.box(
-                    rx.icon("file-check", size=24, color="var(--green-10)"),
-                    bg="var(--green-3)",
-                    padding="3",
-                    border_radius="lg",
+        # Danh sách tệp người dùng chọn từ máy tính
+        rx.foreach(
+            rx.selected_files("doc_upload"),
+            lambda f: rx.card(
+                rx.hstack(
+                    rx.icon("file-check", size=18, color="var(--green-10)"),
+                    rx.vstack(
+                        rx.text(f, size="2", weight="bold", color="green.12"),
+                        rx.text("Tệp đã sẵn sàng tải lên cùng biểu mẫu", size="1", color="green.10"),
+                        spacing="0",
+                    ),
+                    rx.spacer(),
+                    rx.badge("Đã chọn từ máy", color_scheme="green", variant="solid", size="1"),
+                    align="center",
+                    spacing="2",
+                    width="100%",
                 ),
-                rx.vstack(
-                    rx.text(UploadState.uploaded_filename, size="2", weight="bold", color="slate.12", max_width="300px", overflow="hidden", text_overflow="ellipsis", white_space="nowrap"),
-                    rx.text("Tệp đã sẵn sàng để nộp", size="1", color="green.10"),
-                    spacing="1",
-                ),
-                rx.spacer(),
-                rx.button(
-                    rx.icon("x", size=15),
-                    "Xóa",
-                    size="1",
-                    variant="ghost",
-                    color_scheme="red",
-                    on_click=UploadState.clear_file,
-                ),
-                align="center",
-                spacing="3",
+                variant="surface",
+                padding="3",
+                bg="var(--green-2)",
+                border="1px solid var(--green-6)",
                 width="100%",
             ),
-            border="2px solid var(--green-6)",
-            border_radius="xl",
-            padding="4",
-            bg="var(--green-1)",
-            width="100%",
         ),
+        # Nếu có tệp mẫu được chọn sẵn
+        rx.cond(
+            UploadState.uploaded_filename != "",
+            rx.card(
+                rx.hstack(
+                    rx.icon("file-check", size=18, color="var(--blue-10)"),
+                    rx.vstack(
+                        rx.text(UploadState.uploaded_filename, size="2", weight="bold", color="slate.12"),
+                        rx.text("Tệp đính kèm tự động từ dữ liệu mẫu", size="1", color="blue.10"),
+                        spacing="0",
+                    ),
+                    rx.spacer(),
+                    rx.badge("Tệp mẫu", color_scheme="blue", variant="surface", size="1"),
+                    align="center",
+                    spacing="2",
+                    width="100%",
+                ),
+                variant="surface",
+                padding="3",
+                bg="var(--blue-2)",
+                border="1px solid var(--blue-6)",
+                width="100%",
+            ),
+            rx.fragment(),
+        ),
+        spacing="3",
+        width="100%",
     )
 
 
@@ -553,6 +534,16 @@ def success_state() -> rx.Component:
                         ),
                         href="/student/contributions",
                     ),
+                    rx.link(
+                        rx.button(
+                            rx.icon("check-check", size=15),
+                            "Chuyển sang Giảng viên duyệt ngay (Demo)",
+                            size="3",
+                            variant="solid",
+                            color_scheme="green",
+                        ),
+                        href="/lecturer/approval",
+                    ),
                     spacing="3",
                 ),
                 spacing="5",
@@ -592,6 +583,35 @@ def student_upload_page() -> rx.Component:
                         spacing="3",
                     ),
                     rx.divider(color_scheme="gray", margin_y="4"),
+                    width="100%",
+                ),
+
+                # ── Banner Điền Nhanh Dữ Liệu Mẫu (Để Demo Task 3) ──
+                rx.card(
+                    rx.hstack(
+                        rx.icon("sparkles", size=22, color="var(--violet-10)"),
+                        rx.vstack(
+                            rx.text.strong("Kiểm thử nhanh Task 3 (Gửi duyệt tài liệu):", size="2", color="slate.12"),
+                            rx.text("Bấm nút 'Điền mẫu nhanh' để tự động điền tiêu đề, môn học, thư mục và tệp đính kèm trong 1 click!", size="2", color="slate.10"),
+                            spacing="0",
+                        ),
+                        rx.spacer(),
+                        rx.button(
+                            rx.icon("wand-sparkles", size=15),
+                            "⚡ Điền mẫu nhanh",
+                            color_scheme="violet",
+                            variant="solid",
+                            size="2",
+                            on_click=UploadState.quick_fill_sample,
+                        ),
+                        align="center",
+                        spacing="3",
+                        width="100%",
+                    ),
+                    bg="var(--violet-2)",
+                    border="1px solid var(--violet-5)",
+                    padding="3.5",
+                    margin_bottom="3",
                     width="100%",
                 ),
 
@@ -787,18 +807,16 @@ def student_upload_page() -> rx.Component:
                                 ),
                                 # Suggested tags
                                 rx.vstack(
-                                    rx.text("Gợi ý:", size="1", color="slate.9", weight="medium"),
+                                    rx.text("Gợi ý từ khóa phổ biến:", size="1", color="slate.9", weight="medium"),
                                     rx.flex(
                                         *[
-                                            rx.box(
-                                                rx.text(t, size="1"),
-                                                border="1px solid var(--slate-5)",
-                                                border_radius="full",
-                                                padding_x="2.5",
-                                                padding_y="1",
+                                            rx.badge(
+                                                f"+ {t}",
+                                                variant="surface",
+                                                color_scheme="blue",
+                                                size="2",
                                                 cursor="pointer",
-                                                bg="white",
-                                                _hover={"bg": "var(--blue-2)", "border_color": "var(--blue-5)"},
+                                                _hover={"color_scheme": "indigo", "cursor": "pointer"},
                                                 on_click=UploadState.add_suggested_tag(t),
                                             )
                                             for t in SUGGESTED_TAGS[:8]
@@ -857,13 +875,12 @@ def student_upload_page() -> rx.Component:
                             rx.cond(
                                 UploadState.is_submitting,
                                 "Đang gửi...",
-                                "Gửi yêu cầu đóng góp",
+                                "Gửi yêu cầu đóng góp (Nộp vào hàng đợi duyệt)",
                             ),
                             size="4",
                             width="100%",
-                            color_scheme=rx.cond(UploadState.is_form_valid, "blue", "gray"),
+                            color_scheme="blue",
                             variant="solid",
-                            disabled=rx.cond(UploadState.is_form_valid, False, True),
                             loading=UploadState.is_submitting,
                             on_click=UploadState.submit_contribution(rx.upload_files(upload_id="doc_upload")),
                         ),

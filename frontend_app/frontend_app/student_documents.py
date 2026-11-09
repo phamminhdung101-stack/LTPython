@@ -1,537 +1,660 @@
 """
-DocUni - Trang Kho Học Liệu & Tài Liệu Môn Học
+DocUni - Trang Kho Học Liệu & Cây Thư Mục Phân Quyền (Task 2 & Task 3)
 Route: /documents
 Framework: Reflex (Python Full-Stack)
 
-Cung cấp giao diện tra cứu tài liệu học thuật theo môn học, khoa, loại tài liệu
-với thanh tìm kiếm, bộ lọc trực quan và lưới thẻ tài liệu sinh động.
+Tính năng chính:
+- Task 2:
+  + Cây thư mục đa tầng (Khoa -> Môn học -> Thư mục) cho phép duyệt và lọc trực quan.
+  + Kiểm tra phân quyền ACL (Sinh viên Lớp A mở được tài liệu Lớp A, Sinh viên Lớp B bị chặn 403).
+- Task 3:
+  + Hiển thị nhãn phiên bản (v1.0, v2.1) và modal xem lịch sử các version cũ.
+  + Gắn thẻ phân loại (Tag chips) và lọc theo tag.
+  + Hiển thị tài liệu công khai sau khi Giảng viên phê duyệt.
+  + Modal xem nhật ký hoạt động (Audit Activity Logs).
 """
 
 import reflex as rx
-from typing import List
+from typing import Dict, Any
 from .common_components import student_page_wrapper
-from .auth import AuthState
-FACULTIES = [
-    {"value": "ALL", "label": "Tất cả các Khoa"},
-    {"value": "CNTT", "label": "Khoa Công nghệ thông tin"},
-    {"value": "KT", "label": "Khoa Kinh tế"},
-    {"value": "NN", "label": "Khoa Ngoại ngữ"},
-    {"value": "DHB", "label": "Khoa Điều hành bay"},
-]
-
-DOC_TYPES_FILTER = [
-    {"value": "ALL", "label": "Tất cả học liệu"},
-    {"value": "TEXTBOOK", "label": "Giáo trình"},
-    {"value": "SLIDE", "label": "Slide Bài giảng"},
-    {"value": "EXAM", "label": "Đề thi & Đáp án"},
-    {"value": "EXERCISE", "label": "Bài tập"},
-    {"value": "REFERENCE", "label": "Tham khảo"},
-]
-
-# ─── State ───────────────────────────────────────────────────────────────────
-
-class DocListState(rx.State):
-    """Quản lý tìm kiếm, lọc và tương tác với kho tài liệu học phần kết nối PostgreSQL thực tế qua Django API."""
-
-    search_query: str = ""
-    selected_faculty: str = "ALL"
-    selected_type: str = "ALL"
-    all_documents: List[dict] = []
-    is_loading: bool = False
-    api_error: str = ""
-
-    def set_search_query(self, value: str):
-        self.search_query = value
-
-    def set_faculty(self, value: str):
-        self.selected_faculty = value
-
-    def set_type(self, value: str):
-        self.selected_type = value
-
-    def reset_filters(self):
-        self.search_query = ""
-        self.selected_faculty = "ALL"
-        self.selected_type = "ALL"
-
-    async def load_documents_from_api(self):
-        """Tải danh sách tài liệu từ PostgreSQL qua Django REST API."""
-        self.is_loading = True
-        self.api_error = ""
-        
-        try:
-            # Lấy token xác thực nếu có
-            auth = await self.get_state(AuthState)
-            headers = {}
-            if auth.auth_token:
-                headers["Authorization"] = f"Bearer {auth.auth_token}"
-            
-            import httpx
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    "http://127.0.0.1:8000/api/documents/",
-                    headers=headers,
-                    timeout=10.0
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    raw_docs = data.get("documents", [])
-                    
-                    # Chuyển đổi dữ liệu PostgreSQL sang format hiển thị
-                    document_list = []
-                    for item in raw_docs:
-                        # Lấy thông tin môn học và khoa
-                        subject = item.get("subject", {})
-                        subject_name = subject.get("subject_name", "Chưa có môn học") if isinstance(subject, dict) else str(subject)
-                        
-                        department = subject.get("department", {}) if isinstance(subject, dict) else {}
-                        dept_name = department.get("department_name", "") if isinstance(department, dict) else ""
-                        
-                        # Map tên khoa sang mã
-                        dept_id_val = str(department.get("department_id", ""))
-                        dn = dept_name.lower()
-                        if dept_id_val == "2" or "kinh" in dn:
-                            faculty_code = "KT"
-                        elif dept_id_val == "3" or "ngoai" in dn:
-                            faculty_code = "NN"
-                        elif "dieu hanh" in dn or "điều hành" in dn or "dhb" in dn:
-                            faculty_code = "DHB"
-                        else:
-                            faculty_code = "CNTT"
-                        
-                        # Lấy người upload
-                        uploader_name = item.get("uploader_name")
-                        if not uploader_name:
-                            uploader_obj = item.get("uploader", {})
-                            uploader_name = uploader_obj.get("full_name") if isinstance(uploader_obj, dict) else str(uploader_obj or "Quản trị viên")
-
-                        # Xác định loại tài liệu từ title hoặc description
-                        title = item.get("title", "Tài liệu không tên")
-                        desc = item.get("description", "")
-                        status_val = item.get("status", "APPROVED")
-
-                        doc_type = "REFERENCE"
-                        type_label = "Tài liệu tham khảo"
-                        type_color = "gray"
-
-                        title_lower = title.lower()
-                        desc_lower = desc.lower()
-
-                        if "giáo trình" in title_lower or "giáo trình" in desc_lower or "textbook" in title_lower:
-                            doc_type = "TEXTBOOK"
-                            type_label = "Giáo trình"
-                            type_color = "blue"
-                        elif "slide" in title_lower or "bài giảng" in title_lower:
-                            doc_type = "SLIDE"
-                            type_label = "Slide Bài giảng"
-                            type_color = "purple"
-                        elif "đề thi" in title_lower or "exam" in title_lower or "kiểm tra" in title_lower:
-                            doc_type = "EXAM"
-                            type_label = "Đề thi & Đáp án"
-                            type_color = "red"
-                        elif "bài tập" in title_lower or "exercise" in title_lower:
-                            doc_type = "EXERCISE"
-                            type_label = "Bài tập"
-                            type_color = "orange"
-
-                        document_list.append({
-                            "id": item.get("document_id", 0),
-                            "title": title,
-                            "desc": desc or "Không có mô tả",
-                            "subject_code": f"SUBJ{subject.get('subject_id', 0)}" if isinstance(subject, dict) else "N/A",
-                            "subject_name": subject_name,
-                            "faculty": faculty_code,
-                            "doc_type": doc_type,
-                            "type_label": type_label,
-                            "type_color": type_color,
-                            "status": status_val,
-                            "downloads": item.get("download_count", 0),
-                            "uploader": uploader_name,
-                            "time": item.get("created_at", "")[:10],  # Chỉ lấy ngày
-                        })
-                    
-                    self.all_documents = document_list
-                else:
-                    self.api_error = f"Lỗi tải dữ liệu từ server (HTTP {response.status_code})"
-                    self.all_documents = []
-        
-        except Exception as e:
-            self.api_error = f"Không thể kết nối PostgreSQL: {str(e)}"
-            self.all_documents = []
-        
-        finally:
-            self.is_loading = False
-
-    @rx.var
-    def filtered_documents(self) -> List[dict]:
-        """Lọc tài liệu theo điều kiện tìm kiếm."""
-        query = self.search_query.strip().lower()
-        faculty = self.selected_faculty
-        doc_type = self.selected_type
-
-        results = self.all_documents
-
-        if faculty != "ALL":
-            results = [d for d in results if d["faculty"] == faculty]
-
-        if doc_type != "ALL":
-            results = [d for d in results if d["doc_type"] == doc_type]
-
-        if query:
-            results = [
-                d for d in results
-                if query in d["title"].lower()
-                or query in d["subject_code"].lower()
-                or query in d["subject_name"].lower()
-                or query in d["desc"].lower()
-            ]
-
-        return results
-
-    @rx.var
-    def result_count(self) -> int:
-        return len(self.filtered_documents)
-
-    async def download_doc(self, doc_id: int, title: str):
-        """Tải xuống tài liệu thực tế từ server."""
-        try:
-            auth = await self.get_state(AuthState)
-            headers = {}
-            if auth.auth_token:
-                headers["Authorization"] = f"Bearer {auth.auth_token}"
-            
-            import httpx
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"http://127.0.0.1:8000/api/documents/{doc_id}/download/",
-                    headers=headers,
-                    timeout=30.0
-                )
-                
-                if response.status_code == 200:
-                    return rx.toast.success(f"Bắt đầu tải xuống: {title}")
-                else:
-                    return rx.toast.error("Không thể tải tài liệu. Vui lòng kiểm tra quyền truy cập.")
-        
-        except Exception as e:
-            return rx.toast.error(f"Lỗi tải xuống: {str(e)}")
+from .data_store import GlobalDocState, FOLDER_TREE_DATA
 
 
-# ─── UI Helper Components ────────────────────────────────────────────────────
+# ─── 1. Component Cây Thư Mục Tương Tác (Task 2: Folder Tree) ─────────────────
 
-def doc_card(doc: dict) -> rx.Component:
+def folder_tree_sidebar() -> rx.Component:
+    """Sidebar hiển thị cấu trúc Cây thư mục phân cấp cha - con."""
+    def folder_item(f: Dict[str, Any], subject_code: str) -> rx.Component:
+        is_selected = (GlobalDocState.selected_folder == f["name"]) & (GlobalDocState.selected_subject == subject_code)
+        return rx.box(
+            rx.hstack(
+                rx.icon("folder", size=14, color=rx.cond(is_selected, "var(--blue-10)", "var(--slate-8)")),
+                rx.text(f["name"], size="1", weight=rx.cond(is_selected, "bold", "normal")),
+                align="center",
+                spacing="2",
+                padding_y="1.5",
+                padding_x="2.5",
+                border_radius="md",
+                bg=rx.cond(is_selected, "var(--blue-3)", "transparent"),
+                color=rx.cond(is_selected, "var(--blue-11)", "var(--slate-11)"),
+                _hover={"bg": "var(--slate-3)", "cursor": "pointer"},
+                transition="all 0.15s ease",
+            ),
+            on_click=[
+                GlobalDocState.select_tree_filter("SUBJECT", subject_code),
+                GlobalDocState.select_tree_filter("FOLDER", f["name"]),
+            ],
+            width="100%",
+            padding_left="3",
+        )
+
+    def subject_item(sub: Dict[str, Any]) -> rx.Component:
+        is_sub_selected = GlobalDocState.selected_subject == sub["code"]
+        return rx.vstack(
+            rx.hstack(
+                rx.icon("book-open", size=15, color=rx.cond(is_sub_selected, "var(--blue-10)", "var(--slate-9)")),
+                rx.text(sub["name"], size="2", weight=rx.cond(is_sub_selected, "bold", "medium")),
+                align="center",
+                spacing="2",
+                padding_y="2",
+                padding_x="2.5",
+                border_radius="md",
+                bg=rx.cond(is_sub_selected, "var(--blue-2)", "transparent"),
+                color=rx.cond(is_sub_selected, "var(--blue-11)", "var(--slate-12)"),
+                _hover={"bg": "var(--slate-3)", "cursor": "pointer"},
+                on_click=GlobalDocState.select_tree_filter("SUBJECT", sub["code"]),
+                width="100%",
+            ),
+            # Danh sách thư mục con của môn học
+            rx.vstack(
+                *[folder_item(f, sub["code"]) for f in sub.get("children", [])],
+                spacing="1",
+                width="100%",
+                padding_left="2",
+            ),
+            spacing="1",
+            width="100%",
+        )
+
+    def faculty_group(fac: Dict[str, Any]) -> rx.Component:
+        return rx.vstack(
+            rx.hstack(
+                rx.icon("building-2", size=16, color="var(--blue-9)"),
+                rx.text(fac["name"], size="2", weight="bold", color="slate.12"),
+                align="center",
+                spacing="2",
+                padding_y="2",
+                border_b="1px solid var(--slate-4)",
+                width="100%",
+            ),
+            rx.vstack(
+                *[subject_item(sub) for sub in fac.get("children", [])],
+                spacing="2",
+                width="100%",
+                padding_top="2",
+            ),
+            spacing="1",
+            width="100%",
+            margin_bottom="3",
+        )
+
     return rx.card(
         rx.vstack(
-            # Top row: Type badge & icon
+            # Tiêu đề Cây thư mục
             rx.hstack(
-                rx.badge(
-                    rx.hstack(
-                        rx.icon("file-text", size=12),
-                        rx.text(doc["type_label"], size="1", weight="bold"),
-                        align="center",
-                        spacing="1",
-                    ),
-                    color_scheme=doc["type_color"],
-                    variant="surface",
-                    size="1",
-                ),
-                rx.spacer(),
-                rx.cond(
-                    doc["status"] == "APPROVED",
-                    rx.badge("Đã duyệt", color_scheme="green", variant="surface", size="1"),
-                    rx.cond(
-                        doc["status"] == "PENDING",
-                        rx.badge("Chờ duyệt", color_scheme="amber", variant="surface", size="1"),
-                        rx.badge("Từ chối", color_scheme="red", variant="surface", size="1"),
-                    ),
-                ),
-                rx.badge(doc["subject_code"], color_scheme="gray", variant="surface", size="1"),
-                align="center",
-                width="100%",
-            ),
-
-            # Title
-            rx.heading(
-                doc["title"],
-                size="3",
-                weight="bold",
-                color="slate.12",
-                line_height="1.4",
-                max_width="100%",
-            ),
-
-            # Description
-            rx.text(
-                doc["desc"],
-                size="2",
-                color="slate.9",
-                line_height="1.5",
-                max_width="100%",
-            ),
-
-            # Metadata info
-            rx.hstack(
-                rx.hstack(
-                    rx.icon("book-open", size=13, color="var(--slate-8)"),
-                    rx.text(doc["subject_name"], size="1", color="slate.9", weight="medium"),
-                    align="center",
-                    spacing="1",
-                ),
-                rx.spacer(),
-                rx.hstack(
-                    rx.icon("download", size=13, color="var(--green-9)"),
-                    rx.text(doc["downloads"].to_string(), size="1", color="green.11", weight="bold"),
-                    align="center",
-                    spacing="1",
-                ),
-                align="center",
-                width="100%",
-                padding_y="1",
-            ),
-
-            rx.divider(color_scheme="gray"),
-
-            # Bottom row: Uploader + Download button
-            rx.hstack(
-                rx.hstack(
-                    rx.avatar(fallback="TL", size="1", radius="full", color_scheme="blue"),
-                    rx.vstack(
-                        rx.text(doc["uploader"], size="1", weight="bold", color="slate.11"),
-                        rx.text(doc["time"], size="1", color="slate.8"),
-                        spacing="0",
-                    ),
-                    align="center",
-                    spacing="2",
-                ),
+                rx.icon("folder-tree", size=18, color="var(--blue-10)"),
+                rx.heading("Cây Thư Mục Học Liệu", size="3", weight="bold", color="slate.12"),
                 rx.spacer(),
                 rx.button(
-                    rx.icon("download", size=14),
-                    "Tải về",
-                    size="2",
-                    color_scheme="blue",
-                    variant="solid",
-                    on_click=DocListState.download_doc(doc["id"], doc["title"]),
+                    rx.icon("rotate-ccw", size=12),
+                    "Tất cả",
+                    size="1",
+                    variant="ghost",
+                    color_scheme="gray",
+                    on_click=GlobalDocState.select_tree_filter("RESET", ""),
                 ),
                 align="center",
                 width="100%",
+                padding_bottom="2",
+                border_b="1px solid var(--slate-4)",
             ),
-
+            # Danh sách phân cấp
+            rx.vstack(
+                *[faculty_group(fac) for fac in FOLDER_TREE_DATA],
+                spacing="3",
+                width="100%",
+            ),
             spacing="3",
-            align="start",
             width="100%",
         ),
         variant="surface",
         padding="4",
-        _hover={
-            "border_color": "var(--blue-8)",
-            "box_shadow": "md",
-            "transform": "translateY(-2px)",
-        },
-        transition="all 0.2s ease",
-        height="100%",
+        width=["100%", "100%", "300px"],
+        min_width=["100%", "100%", "300px"],
+        height="fit-content",
     )
 
 
-def empty_search_state() -> rx.Component:
-    return rx.center(
+# ─── 2. Thẻ Tài Liệu (Document Card) ──────────────────────────────────────────
+
+def document_card(doc: Dict[str, Any]) -> rx.Component:
+    """Thẻ tài liệu có nhãn bảo mật ACL, nhãn phiên bản và các nút tương tác."""
+    return rx.card(
         rx.vstack(
-            rx.icon("folder-open", size=48, color="var(--slate-6)"),
-            rx.heading("Không tìm thấy tài liệu phù hợp", size="4", color="slate.10"),
-            rx.text(
-                "Thử tìm bằng từ khóa khác hoặc xóa bộ lọc để xem toàn bộ danh mục tài liệu.",
-                size="2",
-                color="slate.8",
-                text_align="center",
-                max_width="450px",
-            ),
-            rx.button(
-                rx.icon("refresh-cw", size=14),
-                "Đặt lại bộ lọc",
-                size="2",
-                variant="surface",
-                color_scheme="blue",
-                on_click=DocListState.reset_filters,
-            ),
-            spacing="3",
-            align="center",
-        ),
-        padding_y="16",
-        width="100%",
-    )
-
-
-# ─── Main Page ───────────────────────────────────────────────────────────────
-
-def document_list_page() -> rx.Component:
-    return student_page_wrapper(
-        rx.vstack(
-            # ── Page Header ──
+            # Header: Loại tài liệu, Phiên bản & Cờ bảo mật ACL
             rx.hstack(
-                rx.hstack(
-                    rx.box(
-                        rx.icon("library", size=28, color="white"),
-                        bg="teal.9",
-                        padding="3",
-                        border_radius="xl",
-                    ),
-                    rx.vstack(
-                        rx.heading("Kho Học Liệu & Tài Liệu Môn Học", size="7", weight="bold", color="slate.12"),
-                        rx.text("Tra cứu slide bài giảng, giáo trình chính thức, đề thi và bài tập được phân loại chuẩn hóa", size="3", color="slate.9"),
-                        spacing="1",
-                    ),
-                    align="center",
-                    spacing="3",
+                rx.badge(
+                    rx.hstack(rx.icon("file-text", size=12), rx.text(doc["type_label"], size="1"), align="center", spacing="1"),
+                    color_scheme="blue",
+                    variant="surface",
+                    radius="full",
+                ),
+                rx.badge(
+                    rx.hstack(rx.icon("git-commit-horizontal", size=11), rx.text(doc["current_version"], size="1", weight="bold"), align="center", spacing="1"),
+                    color_scheme="violet",
+                    variant="solid",
+                    radius="full",
                 ),
                 rx.spacer(),
-                rx.link(
-                    rx.button(
-                        rx.icon("upload", size=16),
-                        "Đóng góp tài liệu",
-                        color_scheme="blue",
-                        size="3",
-                        variant="solid",
-                    ),
-                    href="/student/upload",
+                # Cờ phân quyền ACL
+                rx.cond(
+                    doc["is_public"],
+                    rx.badge(rx.hstack(rx.icon("globe", size=11), rx.text("Công khai", size="1"), align="center", spacing="1"), color_scheme="green", variant="surface"),
+                    rx.badge(rx.hstack(rx.icon("lock", size=11), rx.text("Nội bộ theo Lớp", size="1"), align="center", spacing="1"), color_scheme="orange", variant="surface"),
                 ),
                 align="center",
                 width="100%",
             ),
 
-            rx.divider(color_scheme="gray"),
-
-            # ── Search & Filter Controls Card ──
-            rx.card(
-                rx.vstack(
-                    # Row 1: Search bar + Select Khoa
-                    rx.hstack(
-                        rx.input(
-                            rx.input.slot(rx.icon("search", size=16, color="var(--slate-8)")),
-                            placeholder="Tìm theo tên bài giảng, mã môn (IT101, ECO101...), chủ đề...",
-                            value=DocListState.search_query,
-                            on_change=DocListState.set_search_query,
-                            size="3",
-                            flex="1",
-                        ),
-                        rx.select.root(
-                            rx.select.trigger(width=["100%", "260px", "280px"], size="3"),
-                            rx.select.content(
-                                rx.foreach(
-                                    FACULTIES,
-                                    lambda f: rx.select.item(f["label"], value=f["value"]),
-                                ),
-                            ),
-                            value=DocListState.selected_faculty,
-                            on_change=DocListState.set_faculty,
-                        ),
-                        spacing="3",
-                        width="100%",
-                    ),
-
-                    # Row 2: Pills loại tài liệu + Số lượng kết quả
-                    rx.hstack(
-                        rx.text("Loại học liệu:", size="2", color="slate.9", weight="medium"),
-                        rx.hstack(
-                            *[
-                                rx.button(
-                                    t["label"],
-                                    size="2",
-                                    radius="full",
-                                    variant=rx.cond(DocListState.selected_type == t["value"], "solid", "surface"),
-                                    color_scheme=rx.cond(DocListState.selected_type == t["value"], "blue", "gray"),
-                                    on_click=DocListState.set_type(t["value"]),
-                                )
-                                for t in DOC_TYPES_FILTER
-                            ],
-                            spacing="2",
-                            flex_wrap="wrap",
-                        ),
-                        rx.spacer(),
-                        rx.badge(
-                            rx.hstack(
-                                rx.icon("files", size=12),
-                                rx.text(DocListState.result_count.to_string(), " tài liệu", size="1", weight="bold"),
-                                align="center",
-                                spacing="1",
-                            ),
-                            color_scheme="blue",
-                            variant="surface",
-                            size="2",
-                        ),
-                        align="center",
-                        width="100%",
-                    ),
-
-                    spacing="3",
-                    width="100%",
+            # Tiêu đề & Môn học
+            rx.vstack(
+                rx.heading(doc["title"], size="4", weight="bold", color="slate.12", line_height="1.3"),
+                rx.hstack(
+                    rx.badge(doc["subject_code"], color_scheme="blue", variant="soft", size="1"),
+                    rx.text(doc["folder_path"], size="1", color="slate.9", truncate=True),
+                    align="center",
+                    spacing="2",
                 ),
-                variant="surface",
-                padding="4",
+                spacing="1",
+                align="start",
                 width="100%",
             ),
 
-            # ── Document Grid hoặc Loading/Error State ──
-            rx.cond(
-                DocListState.is_loading,
-                # Loading state
-                rx.center(
-                    rx.vstack(
-                        rx.spinner(size="3", color_scheme="blue"),
-                        rx.text("Đang tải dữ liệu từ PostgreSQL...", size="3", color="slate.9", weight="medium"),
-                        spacing="3",
-                        align="center",
-                    ),
-                    padding_y="16",
-                    width="100%",
-                ),
-                rx.cond(
-                    DocListState.api_error != "",
-                    # Error state
-                    rx.center(
-                        rx.callout.root(
-                            rx.callout.icon(rx.icon("triangle-alert", size=18)),
-                            rx.callout.text(
-                                rx.vstack(
-                                    rx.text("Lỗi kết nối cơ sở dữ liệu", weight="bold", size="3"),
-                                    rx.text(DocListState.api_error, size="2"),
-                                    rx.button(
-                                        rx.icon("refresh-cw", size=14),
-                                        "Thử lại",
-                                        size="2",
-                                        on_click=DocListState.load_documents_from_api,
-                                        margin_top="2",
-                                    ),
-                                    spacing="2",
-                                ),
-                            ),
-                            color="red",
-                            variant="surface",
-                            size="2",
-                        ),
-                        padding_y="16",
-                        width="100%",
-                    ),
-                    # Data loaded successfully
-                    rx.cond(
-                        DocListState.filtered_documents.length() > 0,
-                        rx.grid(
-                            rx.foreach(
-                                DocListState.filtered_documents,
-                                doc_card,
-                            ),
-                            columns="3",
-                            spacing="4",
-                            width="100%",
-                        ),
-                        empty_search_state(),
-                    ),
-                ),
+            # Mô tả tóm tắt
+            rx.text(
+                doc["description"],
+                size="2",
+                color="slate.10",
+                line_clamp=2,
+                line_height="1.4",
             ),
 
+            # Tags chips
+            rx.hstack(
+                rx.icon("tag", size=12, color="var(--blue-9)"),
+                rx.text(doc["tag_str"], size="1", color="var(--blue-11)", weight="medium"),
+                align="center",
+                spacing="1",
+            ),
+
+            rx.divider(color_scheme="gray", margin_y="1"),
+
+            # Footer: Uploader, Views, Downloads & Buttons
+            rx.hstack(
+                rx.hstack(
+                    rx.icon("user", size=12, color="var(--slate-8)"),
+                    rx.text(doc["uploader_name"], size="1", color="slate.9"),
+                    align="center",
+                    spacing="1",
+                ),
+                rx.spacer(),
+                rx.hstack(
+                    rx.icon("eye", size=12, color="var(--slate-8)"),
+                    rx.text(doc["views"], size="1", color="slate.9"),
+                    rx.icon("download", size=12, color="var(--slate-8)"),
+                    rx.text(doc["downloads"], size="1", color="slate.9"),
+                    align="center",
+                    spacing="2",
+                ),
+                align="center",
+                width="100%",
+            ),
+
+            # Action Buttons Row
+            rx.hstack(
+                rx.button(
+                    rx.icon("file-text", size=14),
+                    "Mở / Tải tài liệu",
+                    size="2",
+                    color_scheme="blue",
+                    variant="solid",
+                    on_click=GlobalDocState.open_document(doc["id"]),
+                    flex="1",
+                ),
+                rx.tooltip(
+                    rx.icon_button(
+                        rx.icon("history", size=14),
+                        size="2",
+                        variant="surface",
+                        color_scheme="violet",
+                        on_click=GlobalDocState.open_version_modal(doc["id"]),
+                    ),
+                    content="Xem lịch sử các phiên bản",
+                ),
+                rx.tooltip(
+                    rx.icon_button(
+                        rx.icon("file-clock", size=14),
+                        size="2",
+                        variant="surface",
+                        color_scheme="gray",
+                        on_click=GlobalDocState.open_audit_modal(doc["id"]),
+                    ),
+                    content="Xem nhật ký kiểm toán (Audit Logs)",
+                ),
+                align="center",
+                spacing="2",
+                width="100%",
+                margin_top="1",
+            ),
+            spacing="3",
+            width="100%",
+        ),
+        variant="surface",
+        padding="4",
+        _hover={"box_shadow": "md", "border_color": "var(--blue-7)"},
+        transition="all 0.2s ease",
+    )
+
+
+# ─── 3. Modal Xem Chi Tiết Tài Liệu (Khi được phép truy cập) ─────────────────
+
+def document_detail_modal() -> rx.Component:
+    """Modal chi tiết tài liệu khi vượt qua kiểm tra ACL thành công."""
+    doc = GlobalDocState.active_doc
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.vstack(
+                # Modal Header
+                rx.hstack(
+                    rx.badge(doc.get("type_label", "Tài liệu"), color_scheme="blue", variant="surface"),
+                    rx.badge(doc.get("current_version", "v1.0"), color_scheme="violet", variant="solid"),
+                    rx.cond(
+                        doc.get("is_public", True),
+                        rx.badge("Công khai", color_scheme="green", variant="surface"),
+                        rx.badge("Nội bộ theo Lớp", color_scheme="orange", variant="surface"),
+                    ),
+                    rx.spacer(),
+                    rx.dialog.close(
+                        rx.icon_button(rx.icon("x", size=16), variant="ghost", color_scheme="gray", on_click=GlobalDocState.close_detail_modal),
+                    ),
+                    align="center",
+                    width="100%",
+                ),
+
+                rx.heading(doc.get("title", ""), size="5", weight="bold", color="slate.12"),
+                rx.text(doc.get("folder_path", ""), size="2", color="slate.9"),
+
+                rx.divider(color_scheme="gray"),
+
+                # Metadata Cards
+                rx.grid(
+                    rx.box(rx.text("Người đóng góp:", size="1", color="slate.9"), rx.text(doc.get("uploader_name", ""), size="2", weight="bold")),
+                    rx.box(rx.text("Môn học:", size="1", color="slate.9"), rx.text(doc.get("subject_name", ""), size="2", weight="bold")),
+                    rx.box(rx.text("Tên tệp:", size="1", color="slate.9"), rx.text(doc.get("file_name", ""), size="2", weight="bold")),
+                    rx.box(rx.text("Dung lượng:", size="1", color="slate.9"), rx.text(doc.get("file_size", ""), size="2", weight="bold")),
+                    columns="2",
+                    spacing="3",
+                    width="100%",
+                    bg="slate.2",
+                    padding="3",
+                    border_radius="lg",
+                ),
+
+                # Khung Đọc Trước Nội Dung (Document Preview)
+                rx.vstack(
+                    rx.hstack(
+                        rx.icon("eye", size=16, color="var(--blue-9)"),
+                        rx.text("Bản Đọc Trước Nội Dung (Preview)", size="2", weight="bold", color="slate.12"),
+                        align="center",
+                        spacing="2",
+                    ),
+                    rx.scroll_area(
+                        rx.code_block(
+                            doc.get("preview_text", "Đang tải bản xem trước..."),
+                            language="markdown",
+                            wrap_long_lines=True,
+                        ),
+                        type="always",
+                        scrollbars="vertical",
+                        style={"max_height": "200px"},
+                        width="100%",
+                    ),
+                    spacing="2",
+                    width="100%",
+                ),
+
+                # Action buttons
+                rx.hstack(
+                    rx.spacer(),
+                    rx.button(
+                        "Đóng",
+                        variant="surface",
+                        color_scheme="gray",
+                        on_click=GlobalDocState.close_detail_modal,
+                    ),
+                    rx.button(
+                        rx.icon("download", size=15),
+                        "Tải Tệp Về Máy",
+                        color_scheme="blue",
+                        on_click=GlobalDocState.download_active_doc,
+                    ),
+                    spacing="3",
+                    width="100%",
+                    margin_top="3",
+                ),
+                spacing="3",
+                width="100%",
+            ),
+            max_width="650px",
+            border_radius="xl",
+        ),
+        open=GlobalDocState.detail_modal_open,
+    )
+
+
+# ─── 4. Modal Lịch Sử Phiên Bản (Task 3: Versioning) ──────────────────────────
+
+def version_history_modal() -> rx.Component:
+    """Modal xem toàn bộ lịch sử các version v1.0, v2.0 của tài liệu."""
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.vstack(
+                rx.hstack(
+                    rx.box(
+                        rx.icon("git-branch", size=22, color="var(--violet-10)"),
+                        bg="var(--violet-3)",
+                        padding="2",
+                        border_radius="lg",
+                    ),
+                    rx.vstack(
+                        rx.dialog.title("Lịch Sử Các Phiên Bản Tài Liệu"),
+                        rx.text(GlobalDocState.active_version_title, size="2", color="slate.10", truncate=True, max_width="450px"),
+                        spacing="0",
+                    ),
+                    rx.spacer(),
+                    rx.dialog.close(
+                        rx.icon_button(rx.icon("x", size=16), variant="ghost", color_scheme="gray", on_click=GlobalDocState.close_version_modal),
+                    ),
+                    align="center",
+                    width="100%",
+                ),
+
+                rx.divider(color_scheme="gray"),
+
+                # Danh sách các version
+                rx.table.root(
+                    rx.table.header(
+                        rx.table.row(
+                            rx.table.column_header_cell("Phiên bản"),
+                            rx.table.column_header_cell("Tệp đính kèm"),
+                            rx.table.column_header_cell("Tóm tắt thay đổi (Change Summary)"),
+                            rx.table.column_header_cell("Ngày cập nhật"),
+                            rx.table.column_header_cell("Thao tác"),
+                        )
+                    ),
+                    rx.table.body(
+                        rx.foreach(
+                            GlobalDocState.active_version_list,
+                            lambda v: rx.table.row(
+                                rx.table.cell(rx.badge(v["version"], color_scheme="violet", variant="solid")),
+                                rx.table.cell(v["file_name"]),
+                                rx.table.cell(v["change_summary"]),
+                                rx.table.cell(v["uploaded_at"]),
+                                rx.table.cell(
+                                    rx.button(
+                                        rx.icon("download", size=13),
+                                        "Tải",
+                                        size="1",
+                                        variant="surface",
+                                        color_scheme="blue",
+                                        on_click=GlobalDocState.download_version_file(v["file_name"]),
+                                    )
+                                ),
+                            ),
+                        )
+                    ),
+                    width="100%",
+                ),
+
+                rx.hstack(
+                    rx.spacer(),
+                    rx.button("Đóng", color_scheme="gray", variant="surface", on_click=GlobalDocState.close_version_modal),
+                    spacing="2",
+                    width="100%",
+                    margin_top="3",
+                ),
+                spacing="3",
+                width="100%",
+            ),
+            max_width="750px",
+            border_radius="xl",
+        ),
+        open=GlobalDocState.version_modal_open,
+    )
+
+
+# ─── 5. Modal Nhật Ký Hoạt Động (Task 3: Audit Activity Logs) ─────────────────
+
+def audit_log_modal() -> rx.Component:
+    """Modal kiểm toán hệ thống ghi lại vết mọi thao tác trên tài liệu."""
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.vstack(
+                rx.hstack(
+                    rx.box(
+                        rx.icon("file-clock", size=22, color="var(--indigo-10)"),
+                        bg="var(--indigo-3)",
+                        padding="2",
+                        border_radius="lg",
+                    ),
+                    rx.vstack(
+                        rx.dialog.title("Nhật Ký Hoạt Động & Kiểm Toán (Audit Trail)"),
+                        rx.text(GlobalDocState.active_audit_title, size="2", color="slate.10", truncate=True, max_width="450px"),
+                        spacing="0",
+                    ),
+                    rx.spacer(),
+                    rx.dialog.close(
+                        rx.icon_button(rx.icon("x", size=16), variant="ghost", color_scheme="gray", on_click=GlobalDocState.close_audit_modal),
+                    ),
+                    align="center",
+                    width="100%",
+                ),
+
+                rx.divider(color_scheme="gray"),
+
+                rx.table.root(
+                    rx.table.header(
+                        rx.table.row(
+                            rx.table.column_header_cell("Hành động"),
+                            rx.table.column_header_cell("Người thực hiện"),
+                            rx.table.column_header_cell("Nội dung chi tiết"),
+                            rx.table.column_header_cell("Thời điểm"),
+                        )
+                    ),
+                    rx.table.body(
+                        rx.foreach(
+                            GlobalDocState.active_audit_list,
+                            lambda l: rx.table.row(
+                                rx.table.cell(
+                                    rx.badge(l["action"], color_scheme="blue", variant="surface")
+                                ),
+                                rx.table.cell(l["user_name"]),
+                                rx.table.cell(l["description"]),
+                                rx.table.cell(l["timestamp"]),
+                            ),
+                        )
+                    ),
+                    width="100%",
+                ),
+
+                rx.hstack(
+                    rx.spacer(),
+                    rx.button("Đóng", color_scheme="gray", variant="surface", on_click=GlobalDocState.close_audit_modal),
+                    spacing="2",
+                    width="100%",
+                    margin_top="3",
+                ),
+                spacing="3",
+                width="100%",
+            ),
+            max_width="750px",
+            border_radius="xl",
+        ),
+        open=GlobalDocState.audit_modal_open,
+    )
+
+
+# ─── 6. Trang Chính /documents ────────────────────────────────────────────────
+
+def student_documents_page() -> rx.Component:
+    content = rx.vstack(
+        # Modals
+        document_detail_modal(),
+        version_history_modal(),
+        audit_log_modal(),
+
+        # Banner thông tin kịch bản Demo Task 2 & 3
+        rx.card(
+            rx.hstack(
+                rx.icon("info", size=20, color="var(--blue-10)"),
+                rx.vstack(
+                    rx.text.strong("Kịch bản Demo Phân quyền ACL (Task 2):", size="2", color="slate.12"),
+                    rx.text(
+                        "• Đang chọn tài khoản: ",
+                        rx.badge(GlobalDocState.current_user_name, color_scheme="blue", size="1"),
+                        " thuộc ",
+                        rx.badge(rx.cond(GlobalDocState.current_user_class != "", GlobalDocState.current_user_class, GlobalDocState.current_user_role), color_scheme="purple", size="1"),
+                        " — Sử dụng bộ chọn profile ở góc trên bên phải để hoán đổi giữa Sinh viên Lớp A và Lớp B để kiểm chứng phân quyền.",
+                        size="2",
+                        color="slate.11",
+                    ),
+                    spacing="1",
+                ),
+                align="center",
+                spacing="3",
+                width="100%",
+            ),
+            bg="var(--blue-2)",
+            border="1px solid var(--blue-5)",
+            padding="3.5",
+            margin_bottom="4",
+            width="100%",
+        ),
+
+        # Thanh Tìm kiếm & Lọc Tag
+        rx.card(
+            rx.vstack(
+                rx.hstack(
+                    rx.input(
+                        rx.input.slot(rx.icon("search", size=16, color="var(--slate-8)")),
+                        placeholder="Tìm kiếm tài liệu theo tiêu đề, môn học, mã môn (IT101, CSDL...)...",
+                        value=GlobalDocState.search_query,
+                        on_change=GlobalDocState.set_search_query,
+                        size="3",
+                        flex="1",
+                    ),
+                    rx.button(
+                        rx.icon("x", size=15),
+                        "Xóa bộ lọc",
+                        variant="surface",
+                        color_scheme="gray",
+                        on_click=GlobalDocState.select_tree_filter("RESET", ""),
+                    ),
+                    align="center",
+                    spacing="3",
+                    width="100%",
+                ),
+                # Tag Bar
+                rx.hstack(
+                    rx.text("Tags gợi ý:", size="1", weight="bold", color="slate.10"),
+                    *[
+                        rx.badge(
+                            f"#{t}",
+                            color_scheme=rx.cond(GlobalDocState.selected_tag == t, "blue", "gray"),
+                            variant=rx.cond(GlobalDocState.selected_tag == t, "solid", "surface"),
+                            cursor="pointer",
+                            on_click=GlobalDocState.filter_by_tag(t),
+                        )
+                        for t in ["ctdl", "python", "web", "reflex", "csdl", "sql", "lab", "btl", "lop-a", "lop-b"]
+                    ],
+                    wrap="wrap",
+                    align="center",
+                    spacing="2",
+                ),
+                spacing="3",
+                width="100%",
+            ),
+            padding="4",
+            width="100%",
+        ),
+
+        # Layout 2 cột: Cây thư mục bên trái (Task 2) + Lưới tài liệu bên phải
+        rx.hstack(
+            folder_tree_sidebar(),
+            rx.vstack(
+                # Thanh thống kê kết quả lọc
+                rx.hstack(
+                    rx.heading("Tài Liệu Học Phần Khả Dụng", size="4", weight="bold", color="slate.12"),
+                    rx.badge(rx.text(GlobalDocState.public_documents.length(), " tài liệu"), color_scheme="blue", variant="surface"),
+                    rx.spacer(),
+                    rx.cond(
+                        GlobalDocState.selected_subject != "ALL",
+                        rx.badge(f"Môn: {GlobalDocState.selected_subject}", color_scheme="violet", variant="soft"),
+                        rx.fragment(),
+                    ),
+                    rx.cond(
+                        GlobalDocState.selected_folder != "ALL",
+                        rx.badge(f"Thư mục: {GlobalDocState.selected_folder}", color_scheme="indigo", variant="soft"),
+                        rx.fragment(),
+                    ),
+                    align="center",
+                    width="100%",
+                ),
+
+                # Lưới tài liệu
+                rx.cond(
+                    GlobalDocState.public_documents.length() > 0,
+                    rx.grid(
+                        rx.foreach(
+                            GlobalDocState.public_documents,
+                            document_card,
+                        ),
+                        columns="2",
+                        spacing="4",
+                        width="100%",
+                    ),
+                    rx.center(
+                        rx.vstack(
+                            rx.icon("folder-open", size=48, color="var(--slate-8)"),
+                            rx.text("Không có tài liệu nào phù hợp với thư mục hoặc bộ lọc hiện tại.", size="3", color="slate.9"),
+                            rx.button("Đặt lại bộ lọc", on_click=GlobalDocState.select_tree_filter("RESET", ""), color_scheme="blue", variant="surface"),
+                            align="center",
+                            spacing="3",
+                            padding_y="12",
+                        ),
+                        width="100%",
+                    ),
+                ),
+                spacing="4",
+                flex="1",
+                min_width="0",
+            ),
+            align="start",
             spacing="5",
             width="100%",
         ),
-        active_route="/documents",
+        spacing="5",
+        width="100%",
     )
 
-student_documents_page = document_list_page
+    return student_page_wrapper(content, active_route="/documents")

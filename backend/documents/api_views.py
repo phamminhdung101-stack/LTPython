@@ -1,701 +1,591 @@
+"""
+DocUni - REST API Endpoints Cho Quản Lý Tài Liệu & Cloudflare R2
+Phần 2:
+- POST /api/documents/upload/ : Tải lên tài liệu, upload R2, lưu metadata vào DB
+- GET /api/documents/<id>/download/ : Tải file, kiểm tra ACL, sinh presigned URL R2
+- DELETE /api/documents/<id>/ : Xóa file R2 & xóa bản ghi DB
+- GET /api/documents/ : Danh sách tài liệu kèm bộ lọc
+- GET /api/documents/<id>/ : Chi tiết tài liệu
+
+Phần 3:
+- POST /api/documents/<id>/approve/ : Duyệt tài liệu (Giảng viên / Admin)
+- POST /api/documents/<id>/reject/ : Từ chối tài liệu kèm lý do
+- POST /api/documents/<id>/versions/ : Nâng cấp phiên bản tài liệu (v2.0, v3.0...)
+- GET /api/documents/<id>/versions/ : Danh sách lịch sử các phiên bản
+- GET /api/documents/<id>/logs/ : Nhật ký kiểm toán hoạt động (Audit Activity Logs)
+"""
+
 import json
-import os
-from datetime import datetime
-from pathlib import Path
-
+from django.http import JsonResponse, HttpResponse
+from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.db import transaction
-from django.db.models import Q, Sum, Count
-from django.http import FileResponse
-from django.core.exceptions import SuspiciousFileOperation
-from rest_framework import status
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from rest_framework.permissions import AllowAny
+from django.db.models import Q
 
-from academics.models import Subject, Department
-from accounts.models import User
-from .models import Document, DocumentVersion, Tag, Folder, DocumentActivityLog
-from .serializers import (
-    DocumentSerializer,
-    DocumentCreateSerializer,
-    DocumentVersionSerializer,
-    FolderSerializer,
-    DocumentActivityLogSerializer,
-)
-from .storage_service import LocalDocumentStorageService
-from permissions.rest_permissions import (
-    IsAuthenticatedCustom,
-    IsLecturerOrAdmin,
-    IsOwnerOrAdmin,
-)
+from .models import Document, DocumentVersion, DocumentActivityLog, Folder, Tag
+from academics.models import Subject
+from .validators import validate_file_upload
+from .r2_service import r2_service
+from permissions.services import can_user_access_document, can_user_download_document
 
 
-class DocumentListCreateAPIView(APIView):
+def _json_error(message: str, status: int = 400, errors=None) -> JsonResponse:
+    payload = {'status': 'error', 'message': message}
+    if errors:
+        payload['errors'] = errors
+    return JsonResponse(payload, status=status, json_dumps_params={'ensure_ascii': False})
+
+
+def _json_ok(data=None, message: str = 'Thành công', status: int = 200) -> JsonResponse:
+    payload = {'status': 'ok', 'message': message}
+    if data is not None:
+        payload['data'] = data
+    return JsonResponse(payload, status=status, json_dumps_params={'ensure_ascii': False})
+
+
+# ─── PHẦN 2: UPLOAD / DOWNLOAD / XÓA FILE ────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def upload_document_api(request):
     """
-    GET /api/documents/
-    Lấy danh sách học liệu có phân quyền:
-    - Khách vãng lai: chỉ xem tài liệu công khai (is_public=True) đã duyệt (status='APPROVED').
-    - Sinh viên: xem tài liệu công khai + tài liệu theo khoa/lớp + tài liệu do mình đóng góp.
-    - Giảng viên / Admin: xem toàn bộ tài liệu trong khoa / hệ thống.
-    
-    POST /api/documents/
-    Sinh viên / Giảng viên đóng góp tài liệu mới (hỗ trợ cả JSON metadata và multipart/form-data upload file).
+    API Tải lên tài liệu:
+    - Kiểm tra định dạng (.pdf, .docx, .pptx, .xlsx, .zip)
+    - Kiểm tra dung lượng (<= 50MB)
+    - Tải file lên Cloudflare R2 bucket (hoặc local fallback)
+    - Lưu metadata, SHA-256 và object key vào PostgreSQL
+    - Ghi nhận nhật ký CREATE
     """
-    permission_classes = [AllowAny]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    user = request.user if request.user.is_authenticated else None
 
-    def get(self, request):
-        qs = Document.objects.select_related(
-            'subject', 'subject__department', 'folder', 'uploader', 'approved_by'
-        ).prefetch_related('tags', 'versions').order_by('-created_at')
+    # 1. Lấy và kiểm tra file
+    file_obj = request.FILES.get('file')
+    if not file_obj:
+        return _json_error("Vui lòng đính kèm file tài liệu (tham số 'file').", 400)
 
-        user = request.user if (request.user and request.user.is_authenticated) else None
+    is_valid, err_msg, meta = validate_file_upload(file_obj)
+    if not is_valid:
+        return _json_error(err_msg, 400)
 
-        # Mặc định hiển thị toàn bộ tài liệu từ cơ sở dữ liệu PostgreSQL lên giao diện
-        # Nếu client chỉ định scope='strict' thì mới áp dụng lọc ẩn bớt tài liệu
-        scope = request.GET.get('scope', 'all')
-        if scope == 'strict':
-            if not user:
-                qs = qs.filter(status=Document.APPROVED, is_public=True)
-            elif user.is_admin:
-                pass  # Admin xem tất cả
-            elif user.is_lecturer:
-                if user.department_id:
-                    qs = qs.filter(
-                        Q(status=Document.APPROVED) |
-                        Q(subject__department_id=user.department_id) |
-                        Q(uploader_id=user.user_id)
-                    )
-                else:
-                    qs = qs.filter(Q(status=Document.APPROVED) | Q(uploader_id=user.user_id))
-            else:
-                # Sinh viên
-                qs = qs.filter(
-                    Q(status=Document.APPROVED, is_public=True) |
-                    Q(uploader_id=user.user_id) |
-                    (Q(status=Document.APPROVED, subject__department_id=user.department_id) if user.department_id else Q())
-                )
+    # 2. Lấy các thông số metadata từ request
+    title = request.POST.get('title', '').strip() or meta['filename']
+    description = request.POST.get('description', '').strip()
+    subject_id = request.POST.get('subject_id')
+    folder_id = request.POST.get('folder_id')
+    is_public = request.POST.get('is_public', 'false').lower() in ('true', '1', 'yes')
 
-        # Bộ lọc tìm kiếm
-        q = request.GET.get('q', '').strip()
-        subject_id = request.GET.get('subject_id')
-        dept_id = request.GET.get('department_id')
-        doc_status = request.GET.get('status')
-        uploader = request.GET.get('uploader')
+    if not subject_id:
+        return _json_error("Môn học ('subject_id') là bắt buộc.", 400)
 
-        if q:
-            qs = qs.filter(
-                Q(title__icontains=q) |
-                Q(description__icontains=q) |
-                Q(subject__subject_name__icontains=q)
-            )
-        if subject_id and str(subject_id).isdigit():
-            qs = qs.filter(subject_id=int(subject_id))
-        if dept_id and str(dept_id).isdigit():
-            qs = qs.filter(subject__department_id=int(dept_id))
-        if doc_status and doc_status != 'ALL':
-            qs = qs.filter(status=doc_status)
-        if uploader == 'me' and user:
-            qs = qs.filter(uploader_id=user.user_id)
-        elif uploader and str(uploader).isdigit():
-            qs = qs.filter(uploader_id=int(uploader))
+    try:
+        subject = Subject.objects.get(pk=subject_id)
+    except Subject.DoesNotExist:
+        return _json_error(f"Không tìm thấy môn học với ID = {subject_id}.", 404)
 
-        serializer = DocumentSerializer(qs, many=True)
-        return Response({
-            'status': 'success',
-            'total': qs.count(),
-            'documents': serializer.data,
-        }, status=status.HTTP_200_OK)
+    folder = None
+    if folder_id:
+        try:
+            folder = Folder.objects.get(pk=folder_id, subject=subject)
+        except Folder.DoesNotExist:
+            return _json_error(f"Thư mục ID = {folder_id} không tồn tại hoặc không thuộc môn học này.", 404)
 
-    def post(self, request):
-        if not (request.user and request.user.is_authenticated):
-            return Response({
-                'status': 'error',
-                'message': 'Vui lòng đăng nhập để đóng góp tài liệu.',
-            }, status=status.HTTP_401_UNAUTHORIZED)
+    # Nếu người upload là Giảng viên hoặc Admin -> có thể duyệt trực tiếp, ngược lại mặc định PENDING
+    status = Document.PENDING
+    if user and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False)):
+        # Giảng viên/Admin tải lên có thể tự công khai nếu muốn
+        if is_public:
+            status = Document.APPROVED
 
-        # Nếu có file đính kèm dạng multipart, chuyển tiếp sang logic upload tệp
-        uploaded_file = request.FILES.get('file')
-        if uploaded_file:
-            return DocumentUploadAPIView().post(request)
-
-        # Xử lý tạo metadata tài liệu dạng JSON
-        serializer = DocumentCreateSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response({'status': 'error', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
-
-        doc = serializer.save(
-            uploader=request.user,
-            status=Document.PENDING,
+    with transaction.atomic():
+        # 3. Tạo bản ghi Document trong PostgreSQL
+        doc = Document.objects.create(
+            title=title,
+            description=description,
+            subject=subject,
+            folder=folder,
+            uploader=user,
+            status=status,
+            is_public=is_public if status == Document.APPROVED else False,
+            approved_by=user if status == Document.APPROVED else None,
+            approved_at=timezone.now() if status == Document.APPROVED else None,
         )
 
-        file_path = request.data.get('file_path', '')
-        if file_path:
-            meta = {
-                'file_name': os.path.basename(file_path),
-                'original_file_name': os.path.basename(file_path),
-                'file_type': os.path.splitext(file_path)[1].lstrip('.').upper() or 'DOCUMENT',
-                'file_size': int(request.data.get('file_size', 0)),
-                'mime_type': 'application/octet-stream',
-                'object_key': file_path,
-                'storage_provider': 'LOCAL',
-                'uploader_id': request.user.user_id,
-                'subject_id': doc.subject_id,
-                'class_id': getattr(request.user, 'class_id', None),
-                'department_id': getattr(doc.subject, 'department_id', None) or getattr(request.user, 'department_id', None),
-                'upload_date': datetime.now().isoformat(),
-                'document_status': Document.PENDING,
-                'description': doc.description or '',
-            }
-            DocumentVersion.objects.create(
-                document=doc,
-                file_path=file_path,
-                version_number=1,
-                updated_by=request.user,
-                change_summary=json.dumps(meta, ensure_ascii=False),
-            )
+        # 4. Tạo Object Key chuẩn và tải lên Cloudflare R2
+        # Định dạng khóa: documents/{subject_id}/{doc_id}/v1_{filename}
+        clean_filename = meta['filename'].replace(' ', '_')
+        object_key = f"documents/{subject.id}/{doc.id}/v1_{clean_filename}"
 
-        DocumentActivityLog.objects.create(
+        upload_res = r2_service.upload_file(
+            file_obj=file_obj,
+            object_key=object_key,
+            content_type=meta['content_type'],
+        )
+
+        # 5. Lưu phiên bản v1.0 vào PostgreSQL
+        version = DocumentVersion.objects.create(
             document=doc,
-            user=request.user,
-            action='CREATE',
-            description=f"Tạo thông tin tài liệu: {doc.title}",
+            file=object_key,
+            version_number=1,
+            updated_by=user,
+            change_summary="Bản phát hành đầu tiên (v1.0)",
         )
 
-        return Response({
-            'status': 'success',
-            'message': 'Đóng góp tài liệu thành công! Tài liệu đang ở trạng thái chờ duyệt (PENDING).',
-            'document': DocumentSerializer(doc).data,
-        }, status=status.HTTP_201_CREATED)
+        # Gắn thẻ (Tags) nếu có
+        raw_tags = request.POST.get('tags', '')
+        if raw_tags:
+            tag_names = [t.strip().lower() for t in raw_tags.split(',') if t.strip()]
+            for t_name in tag_names:
+                tag, _ = Tag.objects.get_or_create(tag_name=t_name)
+                doc.tags.add(tag)
 
-
-class DocumentUploadAPIView(APIView):
-    """
-    POST /api/documents/upload/
-    Upload tài liệu thực tế lưu vào thư mục media/documents/YYYY/MM/.
-    Kiểm tra MIME type, magic bytes, định dạng whitelist và giới hạn dung lượng.
-    Lưu metadata vào PostgreSQL với trạng thái PENDING mặc định.
-    """
-    permission_classes = [AllowAny]
-    parser_classes = [MultiPartParser, FormParser]
-
-    def post(self, request):
-        if not (request.user and request.user.is_authenticated):
-            return Response({
-                'status': 'error',
-                'message': 'Vui lòng đăng nhập để tải lên tài liệu.',
-            }, status=status.HTTP_401_UNAUTHORIZED)
-
-        uploaded_file = request.FILES.get('file')
-        if not uploaded_file:
-            return Response({
-                'status': 'error',
-                'message': 'Vui lòng chọn tệp tài liệu để tải lên.',
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Lấy thông tin đầu vào
-        subject_id = request.data.get('subject_id')
-        if not subject_id:
-            return Response({
-                'status': 'error',
-                'message': 'Thông tin môn học (subject_id) là bắt buộc.',
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            subject = Subject.objects.select_related('department').get(pk=int(subject_id))
-        except (Subject.DoesNotExist, ValueError):
-            return Response({
-                'status': 'error',
-                'message': f'Môn học với ID {subject_id} không tồn tại.',
-            }, status=status.HTTP_404_NOT_FOUND)
-
-        title = request.data.get('title', '').strip() or uploaded_file.name
-        description = request.data.get('description', '').strip()
-        folder_id = request.data.get('folder_id')
-        is_public_raw = request.data.get('is_public', False)
-        is_public = str(is_public_raw).lower() in ('true', '1', 'yes')
-
-        # 1. Lưu file vào FileSystemStorage cục bộ
-        storage_service = LocalDocumentStorageService()
-        try:
-            file_meta = storage_service.save_document_file(uploaded_file)
-        except Exception as e:
-            return Response({
-                'status': 'error',
-                'message': str(e),
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        object_key = file_meta['object_key']
-
-        # 2. Lưu Metadata vào PostgreSQL trong Database Transaction
-        try:
-            with transaction.atomic():
-                doc = Document.objects.create(
-                    title=title,
-                    description=description,
-                    subject=subject,
-                    folder_id=int(folder_id) if folder_id and str(folder_id).isdigit() else None,
-                    uploader=request.user,
-                    status=Document.PENDING,  # Mặc định tài liệu mới upload có trạng thái PENDING
-                    is_public=is_public,
-                )
-
-                # Bổ sung thông tin metadata chi tiết
-                dept_id = getattr(subject, 'department_id', None) or getattr(request.user, 'department_id', None)
-                cls_id = getattr(request.user, 'class_id', None)
-                if request.data.get('class_id') and str(request.data.get('class_id')).isdigit():
-                    cls_id = int(request.data.get('class_id'))
-                if request.data.get('department_id') and str(request.data.get('department_id')).isdigit():
-                    dept_id = int(request.data.get('department_id'))
-
-                full_meta = {
-                    'document_id': doc.document_id,
-                    'file_name': file_meta['file_name'],
-                    'original_file_name': file_meta['original_file_name'],
-                    'file_type': file_meta['file_type'],
-                    'file_size': file_meta['file_size'],
-                    'mime_type': file_meta['mime_type'],
-                    'object_key': object_key,
-                    'storage_provider': 'LOCAL',
-                    'uploader_id': request.user.user_id,
-                    'subject_id': subject.subject_id,
-                    'class_id': cls_id,
-                    'department_id': dept_id,
-                    'upload_date': file_meta['upload_date'],
-                    'document_status': Document.PENDING,
-                    'description': description,
-                }
-
-                DocumentVersion.objects.create(
-                    document=doc,
-                    file_path=object_key,
-                    version_number=1,
-                    updated_by=request.user,
-                    change_summary=json.dumps(full_meta, ensure_ascii=False),
-                )
-
-                # Ghi log hoạt động
-                DocumentActivityLog.objects.create(
-                    document=doc,
-                    user=request.user,
-                    action='CREATE',
-                    description=f"Tải lên tài liệu mới: {title} (File: {file_meta['original_file_name']}, Khóa: {object_key})",
-                )
-
-            return Response({
-                'status': 'success',
-                'message': 'Tải lên tài liệu thành công. Tài liệu đang ở trạng thái chờ duyệt (PENDING).',
-                'document': DocumentSerializer(doc).data,
-            }, status=status.HTTP_201_CREATED)
-
-        except Exception as e:
-            # Đồng bộ dữ liệu: Nếu lưu metadata vào PostgreSQL thất bại, phải xóa file vừa upload
-            storage_service.delete_document_file(object_key)
-            return Response({
-                'status': 'error',
-                'message': f'Lưu thông tin tài liệu thất bại: {str(e)}',
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-class DocumentDetailAPIView(APIView):
-    """
-    GET /api/documents/<pk>/
-    DELETE /api/documents/<pk>/
-    """
-    permission_classes = [AllowAny]
-
-    def get(self, request, pk):
-        try:
-            doc = Document.objects.select_related(
-                'subject', 'subject__department', 'folder', 'uploader', 'approved_by'
-            ).prefetch_related('tags', 'versions').get(pk=pk)
-        except Document.DoesNotExist:
-            return Response({'status': 'error', 'message': 'Không tìm thấy tài liệu.'}, status=status.HTTP_404_NOT_FOUND)
-
-        # Tăng lượt xem
-        Document.objects.filter(pk=pk).update(view_count=doc.view_count + 1)
-        doc.view_count += 1
-
-        versions = doc.versions.all().order_by('-version_number')
-
-        return Response({
-            'status': 'success',
-            'document': DocumentSerializer(doc).data,
-            'versions': DocumentVersionSerializer(versions, many=True).data,
-        }, status=status.HTTP_200_OK)
-
-    def patch(self, request, pk):
-        if not (request.user and request.user.is_authenticated):
-            return Response({'status': 'error', 'message': 'Vui lòng đăng nhập.'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            doc = Document.objects.get(pk=pk)
-        except Document.DoesNotExist:
-            return Response({'status': 'error', 'message': 'Không tìm thấy tài liệu.'}, status=status.HTTP_404_NOT_FOUND)
-
-        if not (request.user.is_admin or request.user.is_lecturer or doc.uploader_id == request.user.user_id):
-            return Response({'status': 'error', 'message': 'Bạn không có quyền chỉnh sửa tài liệu này.'}, status=status.HTTP_403_FORBIDDEN)
-
-        title = request.data.get('title')
-        description = request.data.get('description')
-        folder_id = request.data.get('folder_id')
-        is_public = request.data.get('is_public')
-
-        update_fields = []
-        if title is not None:
-            doc.title = title.strip()
-            update_fields.append('title')
-        if description is not None:
-            doc.description = description.strip()
-            update_fields.append('description')
-        if folder_id is not None and str(folder_id).isdigit():
-            doc.folder_id = int(folder_id)
-            update_fields.append('folder_id')
-        if is_public is not None:
-            doc.is_public = str(is_public).lower() in ('true', '1', 'yes') if isinstance(is_public, (str, bool)) else bool(is_public)
-            update_fields.append('is_public')
-
-        if update_fields:
-            doc.save(update_fields=update_fields)
-
-        return Response({
-            'status': 'success',
-            'message': 'Đã cập nhật thông tin tài liệu thành công.',
-            'document': DocumentSerializer(doc).data,
-        }, status=status.HTTP_200_OK)
-
-    def delete(self, request, pk):
-        if not (request.user and request.user.is_authenticated):
-            return Response({
-                'status': 'error',
-                'message': 'Vui lòng đăng nhập để thực hiện thao tác xóa.',
-            }, status=status.HTTP_401_UNAUTHORIZED)
-
-        try:
-            doc = Document.objects.get(pk=pk)
-        except Document.DoesNotExist:
-            return Response({'status': 'error', 'message': 'Không tìm thấy tài liệu.'}, status=status.HTTP_404_NOT_FOUND)
-
-        # Kiểm tra quyền xóa: Chỉ Admin hoặc người đã upload tài liệu mới được xóa
-        if not (request.user.is_admin or doc.uploader_id == request.user.user_id):
-            return Response({
-                'status': 'error',
-                'message': 'Bạn không có quyền xóa tài liệu này.',
-            }, status=status.HTTP_403_FORBIDDEN)
-
-        storage_service = LocalDocumentStorageService()
-        object_keys_to_delete = [
-            v.file_path for v in doc.versions.all() if v.file_path and not v.file_path.startswith('/storage/')
-        ]
-
-        # Xóa metadata trong PostgreSQL
-        with transaction.atomic():
-            doc_title = doc.title
-            doc.delete()
-
-        # Xóa các file vật lý thực tế trong media/ sau khi xóa DB thành công
-        for key in object_keys_to_delete:
-            storage_service.delete_document_file(key)
-
-        return Response({
-            'status': 'success',
-            'message': f'Đã xóa tài liệu "{doc_title}" và tệp lưu trữ thành công.',
-        }, status=status.HTTP_200_OK)
-
-
-class DocumentDownloadAPIView(APIView):
-    """
-    GET /api/documents/<pk>/download/
-    POST /api/documents/<pk>/download/
-    Tải file tài liệu thực tế từ media/ có kiểm tra JWT / Authentication và phân quyền.
-    """
-    permission_classes = [AllowAny]
-
-    def _handle_download(self, request, pk):
-        user = request.user if (request.user and request.user.is_authenticated) else None
-
-        # 1. Kiểm tra xác thực (Bắt buộc phải đăng nhập hoặc gửi token)
-        if not user:
-            return Response({
-                'status': 'error',
-                'message': 'Vui lòng đăng nhập hoặc cung cấp JWT token hợp lệ để tải tài liệu.',
-            }, status=status.HTTP_401_UNAUTHORIZED)
-
-        # 2. Truy vấn tài liệu
-        try:
-            doc = Document.objects.select_related('subject', 'uploader').get(pk=pk)
-        except Document.DoesNotExist:
-            return Response({
-                'status': 'error',
-                'message': 'Tài liệu không tồn tại trên hệ thống.',
-            }, status=status.HTTP_404_NOT_FOUND)
-
-        # 3. Kiểm tra trạng thái và quyền Download
-        # - Tài liệu đã APPROVED: Người dùng có quyền truy cập được phép tải.
-        # - Tài liệu chưa APPROVED (PENDING hoặc REJECTED): Chỉ Admin, Giảng viên hoặc chính người upload mới được phép tải.
-        if doc.status != Document.APPROVED:
-            is_uploader = (doc.uploader_id == user.user_id)
-            is_staff = user.is_admin or user.is_lecturer
-            if not (is_uploader or is_staff):
-                return Response({
-                    'status': 'error',
-                    'message': 'Tài liệu chưa được phê duyệt. Bạn không có quyền tải xuống tài liệu này.',
-                }, status=status.HTTP_403_FORBIDDEN)
-
-        # 4. Lấy object_key từ version mới nhất
-        object_key = doc.object_key
-        if not object_key:
-            return Response({
-                'status': 'error',
-                'message': 'Tài liệu không có tệp đính kèm.',
-            }, status=status.HTTP_404_NOT_FOUND)
-
-        # 5. Xác định file thực tế trong media/ và Chống Path Traversal
-        storage_service = LocalDocumentStorageService()
-        try:
-            abs_path = storage_service.get_absolute_path(object_key)
-        except SuspiciousFileOperation:
-            return Response({
-                'status': 'error',
-                'message': 'Đường dẫn tệp tin không an toàn hoặc không hợp lệ.',
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        if not abs_path or not abs_path.exists() or not abs_path.is_file():
-            return Response({
-                'status': 'error',
-                'message': 'Tệp tin không tồn tại trên hệ thống lưu trữ.',
-            }, status=status.HTTP_404_NOT_FOUND)
-
-        # 6. Ghi nhận lượt tải và nhật ký hoạt động
-        Document.objects.filter(pk=pk).update(download_count=doc.download_count + 1)
+        # 6. Ghi nhật ký hoạt động
         DocumentActivityLog.objects.create(
             document=doc,
             user=user,
-            action='DOWNLOAD',
-            description=f"Tải xuống tài liệu: {doc.title} (File: {doc.original_file_name or doc.file_name})",
+            action='CREATE',
+            description=f"Tải lên tài liệu mới '{title}' (Dung lượng: {round(meta['file_size']/1024, 1)} KB, SHA-256: {meta['checksum_sha256'][:12]}...)",
         )
 
-        # 7. Trả file về client
-        filename_for_download = doc.original_file_name or doc.file_name or abs_path.name
-        mime_type = doc.mime_type or 'application/octet-stream'
+    download_url = r2_service.generate_download_url(object_key)
 
-        response = FileResponse(open(abs_path, 'rb'), content_type=mime_type, as_attachment=True, filename=filename_for_download)
-        return response
+    data = {
+        'document_id': doc.id,
+        'title': doc.title,
+        'subject_id': subject.id,
+        'subject_name': subject.subject_name,
+        'status': doc.status,
+        'is_public': doc.is_public,
+        'version': {
+            'version_id': version.id,
+            'version_number': version.version_number,
+            'object_key': object_key,
+            'download_url': download_url,
+            'storage_provider': upload_res['storage_provider'],
+            'file_size': meta['file_size'],
+            'content_type': meta['content_type'],
+            'checksum_sha256': meta['checksum_sha256'],
+        }
+    }
+    return _json_ok(data, message="Tải lên tài liệu thành công.", status=201)
 
-    def get(self, request, pk):
-        return self._handle_download(request, pk)
 
-    def post(self, request, pk):
-        return self._handle_download(request, pk)
-
-
-class DocumentApproveAPIView(APIView):
+@require_http_methods(["GET"])
+def download_document_api(request, pk):
     """
-    POST /api/documents/<pk>/approve/
-    Duyệt tài liệu (Giảng viên / Admin)
+    API Tải xuống tài liệu:
+    - Kiểm tra quyền truy cập (ACL): Class, Department, User
+    - Sinh Presigned URL Cloudflare R2 có hạn dùng (3600s)
+    - Tăng số lượt tải (download_count)
+    - Ghi nhận nhật ký DOWNLOAD
     """
-    permission_classes = [IsLecturerOrAdmin]
+    doc = get_object_or_404(Document, pk=pk)
+    user = request.user
 
-    def post(self, request, pk):
-        try:
-            doc = Document.objects.get(pk=pk)
-        except Document.DoesNotExist:
-            return Response({'status': 'error', 'message': 'Không tìm thấy tài liệu.'}, status=status.HTTP_404_NOT_FOUND)
+    # 1. Kiểm tra quyền tải theo ACL
+    can_download, reason = can_user_download_document(user, doc)
+    if not can_download:
+        return _json_error(reason, 403)
 
-        doc.status = Document.APPROVED
-        doc.approved_by = request.user
-        doc.approved_at = datetime.now()
-        doc.save(update_fields=['status', 'approved_by', 'approved_at'])
+    # 2. Lấy phiên bản mới nhất
+    latest = doc.latest_version
+    if not latest:
+        return _json_error("Tài liệu không có phiên bản file nào khả dụng.", 404)
 
+    # 3. Tăng lượt tải & ghi log
+    Document.objects.filter(pk=pk).update(download_count=doc.download_count + 1)
+    DocumentActivityLog.objects.create(
+        document=doc,
+        user=user if user.is_authenticated else None,
+        action='DOWNLOAD',
+        description=f"Tải xuống phiên bản v{latest.version_number}.0 (Khóa R2: {latest.object_key})",
+    )
+
+    # 4. Sinh URL tải an toàn từ Cloudflare R2
+    download_url = latest.get_download_url(expires_in=3600)
+
+    # Nếu client truyền ?redirect=true -> chuyển hướng trực tiếp
+    if request.GET.get('redirect', '').lower() in ('true', '1'):
+        from django.shortcuts import redirect
+        return redirect(download_url)
+
+    return _json_ok({
+        'document_id': doc.id,
+        'title': doc.title,
+        'version_number': latest.version_number,
+        'object_key': latest.object_key,
+        'download_url': download_url,
+        'expires_in': 3600,
+    })
+
+
+@csrf_exempt
+@require_http_methods(["DELETE", "POST"])
+def delete_document_api(request, pk):
+    """
+    API Xóa tài liệu:
+    - Chỉ cho phép Tác giả, Giảng viên hoặc Admin
+    - Xóa toàn bộ file các phiên bản trên Cloudflare R2
+    - Xóa bản ghi trong PostgreSQL
+    - Ghi nhận nhật ký DELETE
+    """
+    doc = get_object_or_404(Document, pk=pk)
+    user = request.user
+
+    # Kiểm tra quyền xóa
+    is_owner = (user.is_authenticated and doc.uploader_id == user.id)
+    is_staff = (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False)))
+
+    if not (is_owner or is_staff):
+        return _json_error("Bạn không có quyền xóa tài liệu này.", 403)
+
+    # Thu thập danh sách object key cần xóa trên R2
+    object_keys = list(doc.versions.values_list('file', flat=True))
+
+    with transaction.atomic():
+        # Xóa các file trên R2
+        for key in object_keys:
+            if key:
+                r2_service.delete_file(key)
+
+        title = doc.title
+        doc_id = doc.id
+        doc.delete()
+
+    return _json_ok(
+        data={'deleted_document_id': doc_id, 'deleted_files_count': len(object_keys)},
+        message=f"Đã xóa tài liệu '{title}' và các file liên quan trên Cloudflare R2.",
+    )
+
+
+@require_http_methods(["GET"])
+def document_list_api(request):
+    """
+    API Danh sách tài liệu với bộ lọc:
+    - q: tìm kiếm theo tiêu đề hoặc tên môn
+    - subject_id: lọc theo môn
+    - department_id: lọc theo khoa
+    - status: PENDING, APPROVED, REJECTED
+    - sort: newest, downloads, views
+    """
+    user = request.user
+    qs = Document.objects.select_related('subject__department', 'uploader', 'approved_by')
+
+    # Nếu là sinh viên thông thường: chỉ thấy APPROVED & public, hoặc bài của chính mình
+    if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
+        if user.is_authenticated:
+            qs = qs.filter(Q(status=Document.APPROVED, is_public=True) | Q(uploader=user))
+        else:
+            qs = qs.filter(status=Document.APPROVED, is_public=True)
+
+    q = request.GET.get('q', '').strip()
+    if q:
+        qs = qs.filter(Q(title__icontains=q) | Q(subject__subject_name__icontains=q))
+
+    subject_id = request.GET.get('subject_id')
+    if subject_id:
+        qs = qs.filter(subject_id=subject_id)
+
+    dept_id = request.GET.get('department_id')
+    if dept_id:
+        qs = qs.filter(subject__department_id=dept_id)
+
+    status = request.GET.get('status')
+    if status:
+        qs = qs.filter(status=status.upper())
+
+    sort = request.GET.get('sort', 'newest')
+    if sort == 'downloads':
+        qs = qs.order_by('-download_count')
+    elif sort == 'views':
+        qs = qs.order_by('-view_count')
+    else:
+        qs = qs.order_by('-created_at')
+
+    data = []
+    for d in qs[:50]:
+        latest = d.latest_version
+        data.append({
+            'document_id': d.id,
+            'title': d.title,
+            'description': d.description,
+            'subject_id': d.subject_id,
+            'subject_name': d.subject.subject_name if d.subject else '',
+            'department_name': d.subject.department.department_name if d.subject and d.subject.department else '',
+            'status': d.status,
+            'is_public': d.is_public,
+            'view_count': d.view_count,
+            'download_count': d.download_count,
+            'uploader_name': d.uploader.full_name if d.uploader else 'Ẩn danh',
+            'latest_version': latest.version_number if latest else None,
+            'created_at': d.created_at.strftime('%Y-%m-%d %H:%M'),
+        })
+
+    return _json_ok(data)
+
+
+@csrf_exempt
+@require_http_methods(["GET", "DELETE"])
+def document_detail_api(request, pk):
+    """
+    API Chi tiết hoặc Xóa tài liệu:
+    - GET: Chi tiết tài liệu, kiểm tra quyền truy cập, ghi log VIEW
+    - DELETE: Xóa tài liệu và file trên Cloudflare R2, ghi log DELETE
+    """
+    if request.method == "DELETE":
+        return delete_document_api(request, pk)
+    doc = get_object_or_404(
+        Document.objects.select_related('subject__department', 'uploader', 'approved_by').prefetch_related('tags', 'versions'),
+        pk=pk,
+    )
+    user = request.user
+
+    can_view, view_reason = can_user_access_document(user, doc)
+    can_download, _ = can_user_download_document(user, doc)
+
+    # Nếu người dùng có quyền xem -> tăng view_count và ghi log
+    if can_view:
+        Document.objects.filter(pk=pk).update(view_count=doc.view_count + 1)
         DocumentActivityLog.objects.create(
             document=doc,
-            user=request.user,
-            action='APPROVE',
-            description=f"Phê duyệt tài liệu: {doc.title}",
+            user=user if user.is_authenticated else None,
+            action='VIEW',
         )
 
-        return Response({
-            'status': 'success',
-            'message': f'Đã phê duyệt tài liệu "{doc.title}" thành công.',
-            'document': DocumentSerializer(doc).data,
-        }, status=status.HTTP_200_OK)
+    versions_data = []
+    for v in doc.versions.order_by('-version_number'):
+        versions_data.append({
+            'version_id': v.id,
+            'version_number': v.version_number,
+            'object_key': v.object_key,
+            'download_url': v.get_download_url() if can_download else None,
+            'change_summary': v.change_summary,
+            'updated_at': v.updated_at.strftime('%Y-%m-%d %H:%M'),
+        })
+
+    data = {
+        'document_id': doc.id,
+        'title': doc.title,
+        'description': doc.description,
+        'subject_id': doc.subject_id,
+        'subject_name': doc.subject.subject_name,
+        'department_name': doc.subject.department.department_name,
+        'folder_id': doc.folder_id,
+        'status': doc.status,
+        'is_public': doc.is_public,
+        'view_count': doc.view_count,
+        'download_count': doc.download_count,
+        'uploader_name': doc.uploader.full_name if doc.uploader else 'Ẩn danh',
+        'approved_by': doc.approved_by.full_name if doc.approved_by else None,
+        'approved_at': doc.approved_at.strftime('%Y-%m-%d %H:%M') if doc.approved_at else None,
+        'tags': [t.tag_name for t in doc.tags.all()],
+        'can_view': can_view,
+        'can_download': can_download,
+        'access_note': view_reason,
+        'versions': versions_data,
+        'created_at': doc.created_at.strftime('%Y-%m-%d %H:%M'),
+    }
+    return _json_ok(data)
 
 
-class DocumentRejectAPIView(APIView):
+# ─── PHẦN 3: DUYỆT TÀI LIỆU, PHIÊN BẢN & NHẬT KÝ KIỂM TOÁN ──────────────────
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def approve_document_api(request, pk):
     """
-    POST /api/documents/<pk>/reject/
-    Từ chối tài liệu (Giảng viên / Admin)
+    API Phê duyệt tài liệu (Giảng viên / Admin):
+    - Đổi status -> APPROVED
+    - Đặt is_public = True
+    - Ghi nhận approved_by và approved_at
+    - Ghi nhật ký kiểm toán APPROVE
     """
-    permission_classes = [IsLecturerOrAdmin]
+    doc = get_object_or_404(Document, pk=pk)
+    user = request.user
 
-    def post(self, request, pk):
+    if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
+        return _json_error("Chỉ có Giảng viên hoặc Quản trị viên mới có quyền phê duyệt tài liệu.", 403)
+
+    from .services import approve_document
+    doc = approve_document(doc, user)
+
+    return _json_ok({
+        'document_id': doc.id,
+        'status': doc.status,
+        'is_public': doc.is_public,
+        'approved_by': user.full_name,
+        'approved_at': doc.approved_at.isoformat(),
+    }, message=f"Đã phê duyệt tài liệu '{doc.title}'.")
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def reject_document_api(request, pk):
+    """
+    API Từ chối tài liệu (Giảng viên / Admin):
+    - Đổi status -> REJECTED
+    - Đặt is_public = False
+    - Yêu cầu lý do từ chối (feedback_reason)
+    - Ghi nhật ký kiểm toán REJECT
+    """
+    doc = get_object_or_404(Document, pk=pk)
+    user = request.user
+
+    if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
+        return _json_error("Chỉ có Giảng viên hoặc Quản trị viên mới có quyền từ chối duyệt.", 403)
+
+    reason = request.POST.get('reason', '').strip()
+    if not reason:
+        # Hỗ trợ lấy từ JSON body nếu client gửi Application/json
         try:
-            doc = Document.objects.get(pk=pk)
-        except Document.DoesNotExist:
-            return Response({'status': 'error', 'message': 'Không tìm thấy tài liệu.'}, status=status.HTTP_404_NOT_FOUND)
+            body_data = json.loads(request.body.decode('utf-8'))
+            reason = body_data.get('reason', '').strip()
+        except Exception:
+            pass
 
-        reason = request.data.get('reason', 'Không đạt yêu cầu học phần.')
-        doc.status = Document.REJECTED
-        doc.save(update_fields=['status'])
+    if not reason:
+        return _json_error("Vui lòng nhập lý do từ chối để sinh viên chỉnh sửa.", 400)
 
+    from .services import reject_document
+    doc = reject_document(doc, user, reason)
+
+    return _json_ok({
+        'document_id': doc.id,
+        'status': doc.status,
+        'is_public': doc.is_public,
+        'reason': reason,
+    }, message=f"Đã từ chối duyệt tài liệu '{doc.title}'.")
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def create_version_api(request, pk):
+    """
+    API Nâng cấp phiên bản tài liệu (v2.0, v3.0...):
+    - Nhận file mới, kiểm tra định dạng & dung lượng
+    - Tải file lên Cloudflare R2 với object_key mới
+    - Tự động tăng version_number
+    - Lưu change_summary
+    - Nếu sinh viên nộp lại sau khi bị từ chối -> tự động đưa về PENDING
+    - Ghi log UPDATE
+    """
+    doc = get_object_or_404(Document, pk=pk)
+    user = request.user
+
+    # Kiểm tra quyền: Chỉ tác giả hoặc Giảng viên/Admin mới được cập nhật
+    is_owner = (user.is_authenticated and doc.uploader_id == user.id)
+    is_staff = (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False)))
+    if not (is_owner or is_staff):
+        return _json_error("Bạn không có quyền phát hành phiên bản mới cho tài liệu này.", 403)
+
+    file_obj = request.FILES.get('file')
+    if not file_obj:
+        return _json_error("Vui lòng đính kèm file phiên bản mới.", 400)
+
+    is_valid, err_msg, meta = validate_file_upload(file_obj)
+    if not is_valid:
+        return _json_error(err_msg, 400)
+
+    change_summary = request.POST.get('change_summary', '').strip() or "Cập nhật nội dung tài liệu"
+
+    latest = doc.latest_version
+    next_ver = (latest.version_number + 1) if latest else 1
+
+    clean_filename = meta['filename'].replace(' ', '_')
+    object_key = f"documents/{doc.subject_id}/{doc.id}/v{next_ver}_{clean_filename}"
+
+    # Upload R2
+    upload_res = r2_service.upload_file(
+        file_obj=file_obj,
+        object_key=object_key,
+        content_type=meta['content_type'],
+    )
+
+    with transaction.atomic():
+        version = DocumentVersion.objects.create(
+            document=doc,
+            file=object_key,
+            version_number=next_ver,
+            change_summary=change_summary,
+            updated_by=user if user.is_authenticated else None,
+        )
+
+        # Nếu sinh viên nộp lại sau khi bị REJECTED -> đưa về PENDING để duyệt lại
+        if doc.status == Document.REJECTED:
+            doc.status = Document.PENDING
+            doc.save(update_fields=['status'])
+
+        # Ghi log hoạt động
         DocumentActivityLog.objects.create(
             document=doc,
-            user=request.user,
-            action='REJECT',
-            description=f"Từ chối tài liệu: {doc.title}. Lý do: {reason}",
+            user=user if user.is_authenticated else None,
+            action='UPDATE',
+            description=f"Phát hành phiên bản v{next_ver}.0: {change_summary}",
         )
 
-        return Response({
-            'status': 'success',
-            'message': f'Đã từ chối tài liệu "{doc.title}". Lý do: {reason}',
-            'document': DocumentSerializer(doc).data,
-        }, status=status.HTTP_200_OK)
+    return _json_ok({
+        'document_id': doc.id,
+        'version_id': version.id,
+        'version_number': version.version_number,
+        'object_key': object_key,
+        'download_url': version.get_download_url(),
+        'change_summary': version.change_summary,
+        'doc_status': doc.status,
+    }, message=f"Đã nâng cấp phiên bản lên v{next_ver}.0 thành công.", status=201)
 
 
-class DocumentPendingListAPIView(APIView):
+@require_http_methods(["GET"])
+def version_list_api(request, pk):
     """
-    GET /api/documents/pending/
-    Hàng đợi duyệt tài liệu (Giảng viên / Admin)
+    API Lấy danh sách lịch sử tất cả phiên bản của một tài liệu.
     """
-    permission_classes = [IsLecturerOrAdmin]
+    doc = get_object_or_404(Document, pk=pk)
+    user = request.user
+    can_download, _ = can_user_download_document(user, doc)
 
-    def get(self, request):
-        qs = Document.objects.filter(status=Document.PENDING).select_related(
-            'subject', 'uploader'
-        ).prefetch_related('versions').order_by('-created_at')
+    versions = []
+    for v in doc.versions.order_by('-version_number'):
+        versions.append({
+            'version_id': v.id,
+            'version_number': v.version_number,
+            'object_key': v.object_key,
+            'download_url': v.get_download_url() if can_download else None,
+            'change_summary': v.change_summary,
+            'updated_by': v.updated_by.full_name if v.updated_by else 'Ẩn danh',
+            'updated_at': v.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
+        })
 
-        if not request.user.is_admin and request.user.department_id:
-            qs = qs.filter(subject__department_id=request.user.department_id)
-
-        serializer = DocumentSerializer(qs, many=True)
-        return Response({
-            'status': 'success',
-            'total': qs.count(),
-            'pending_documents': serializer.data,
-        }, status=status.HTTP_200_OK)
+    return _json_ok({
+        'document_id': doc.id,
+        'title': doc.title,
+        'total_versions': len(versions),
+        'versions': versions,
+    })
 
 
-class FolderListCreateAPIView(APIView):
+@require_http_methods(["GET"])
+def document_logs_api(request, pk):
     """
-    GET /api/folders/
-    Danh sách thư mục theo môn học (?subject_id=...)
-    POST /api/folders/
-    Tạo thư mục mới (Đã đăng nhập)
+    API Lấy nhật ký kiểm toán (Audit Activity Logs) của tài liệu.
     """
-    permission_classes = [AllowAny]
+    doc = get_object_or_404(Document, pk=pk)
+    logs = doc.activity_logs.select_related('user').order_by('-created_at')
 
-    def get(self, request):
-        qs = Folder.objects.all().order_by('folder_name')
-        subject_id = request.GET.get('subject_id')
-        if subject_id and str(subject_id).isdigit():
-            qs = qs.filter(subject_id=int(subject_id))
+    data = []
+    for log in logs:
+        data.append({
+            'log_id': log.id,
+            'action': log.action,
+            'action_display': log.get_action_display(),
+            'description': log.description,
+            'user': log.user.full_name if log.user else 'Hệ thống / Ẩn danh',
+            'created_at': log.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+        })
 
-        serializer = FolderSerializer(qs, many=True)
-        return Response({
-            'status': 'success',
-            'total': qs.count(),
-            'folders': serializer.data,
-        }, status=status.HTTP_200_OK)
-
-    def post(self, request):
-        if not (request.user and request.user.is_authenticated):
-            return Response({'status': 'error', 'message': 'Vui lòng đăng nhập.'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        folder_name = request.data.get('folder_name', '').strip()
-        subject_id = request.data.get('subject_id')
-        if not folder_name or not subject_id:
-            return Response({'status': 'error', 'message': 'Tên thư mục và mã môn học là bắt buộc.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            folder, created = Folder.objects.get_or_create(
-                folder_name=folder_name,
-                subject_id=int(subject_id),
-                defaults={'created_by': request.user}
-            )
-            return Response({
-                'status': 'success',
-                'folder': FolderSerializer(folder).data,
-                'created': created,
-            }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
-        except Exception as e:
-            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-
-class ActivityLogListAPIView(APIView):
-    """
-    GET /api/activity-logs/
-    Lấy danh sách nhật ký hoạt động hệ thống từ bảng document_activity_logs trong PostgreSQL
-    """
-    permission_classes = [AllowAny]
-
-    def get(self, request):
-        qs = DocumentActivityLog.objects.select_related('document', 'user', 'user__role').order_by('-created_at')[:30]
-        serializer = DocumentActivityLogSerializer(qs, many=True)
-        return Response({
-            'status': 'success',
-            'total': qs.count(),
-            'logs': serializer.data,
-        }, status=status.HTTP_200_OK)
-
-
-class DashboardStatsAPIView(APIView):
-    """
-    GET /api/dashboard/stats/
-    Thống kê tổng hợp toàn diện từ các bảng PostgreSQL thực tế:
-    documents, document_activity_logs, subjects, users, departments.
-    """
-    permission_classes = [AllowAny]
-
-    def get(self, request):
-        user = request.user if (request.user and request.user.is_authenticated) else None
-
-        # Tổng hợp số liệu từ bảng documents
-        doc_qs = Document.objects.all()
-        total_docs = doc_qs.count()
-        approved_docs = doc_qs.filter(status=Document.APPROVED).count()
-        pending_docs = doc_qs.filter(status=Document.PENDING).count()
-        rejected_docs = doc_qs.filter(status=Document.REJECTED).count()
-
-        totals = doc_qs.aggregate(
-            total_views=Sum('view_count'),
-            total_downloads=Sum('download_count'),
-        )
-        total_views = totals.get('total_views') or 0
-        total_downloads = totals.get('total_downloads') or 0
-
-        # Số liệu môn học, khoa, người dùng
-        total_subjects = Subject.objects.count()
-        total_users = User.objects.count()
-        total_departments = Department.objects.count()
-
-        # Thống kê phân bố học liệu theo môn học
-        subject_stats = (
-            Subject.objects.annotate(doc_count=Count('documents'))
-            .values('subject_id', 'subject_name', 'doc_count')
-            .order_by('-doc_count')[:6]
-        )
-
-        # 10 hoạt động gần nhất từ bảng document_activity_logs
-        recent_logs = (
-            DocumentActivityLog.objects.select_related('document', 'user', 'user__role')
-            .order_by('-created_at')[:10]
-        )
-        logs_serializer = DocumentActivityLogSerializer(recent_logs, many=True)
-
-        return Response({
-            'status': 'success',
-            'stats': {
-                'total_documents': total_docs,
-                'approved_documents': approved_docs,
-                'pending_documents': pending_docs,
-                'rejected_documents': rejected_docs,
-                'total_views': total_views,
-                'total_downloads': total_downloads,
-                'total_subjects': total_subjects,
-                'total_users': total_users,
-                'total_departments': total_departments,
-            },
-            'subject_breakdown': list(subject_stats),
-            'recent_activities': logs_serializer.data,
-        }, status=status.HTTP_200_OK)
+    return _json_ok({
+        'document_id': doc.id,
+        'title': doc.title,
+        'total_logs': len(data),
+        'logs': data,
+    })

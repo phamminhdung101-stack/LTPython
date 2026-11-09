@@ -2,6 +2,15 @@
 """Django's command-line utility for administrative tasks."""
 import os
 import sys
+from pathlib import Path
+
+# Đảm bảo nhận các gói site-packages của project và Python cục bộ
+BASE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE_DIR))
+sys.path.insert(0, str(BASE_DIR.parent / 'venv' / 'Lib' / 'site-packages'))
+local_python_pkgs = r'C:\Users\Thai anh ky\AppData\Local\Programs\Python\Python313\Lib\site-packages'
+if os.path.exists(local_python_pkgs) and local_python_pkgs not in sys.path:
+    sys.path.insert(0, local_python_pkgs)
 
 
 def main():
