@@ -73,6 +73,107 @@ def dashboard_stats_api(request):
             monthly_trends.append({'month': row[0], 'count': row[1]})
     monthly_trends.reverse()
 
+    # Real Chart 1: Xu hướng xem và tải 7 ngày gần nhất từ DocumentActivityLog
+    chart_trends_7d = []
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT DATE(created_at) AS log_date,
+                   COUNT(*) FILTER (WHERE action = 'VIEW') AS views,
+                   COUNT(*) FILTER (WHERE action = 'DOWNLOAD') AS downloads
+            FROM document_activity_logs
+            WHERE action IN ('VIEW', 'DOWNLOAD')
+            GROUP BY log_date
+            ORDER BY log_date DESC
+            LIMIT 7
+        """)
+        rows_7d = cursor.fetchall()
+
+    if rows_7d:
+        rows_7d_sorted = sorted(rows_7d, key=lambda x: x[0])
+        day_names = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"]
+        for r_date, r_views, r_downloads in rows_7d_sorted:
+            chart_trends_7d.append({
+                'date': day_names[r_date.weekday()],
+                'full_date': str(r_date),
+                'views': r_views,
+                'downloads': r_downloads,
+            })
+    else:
+        chart_trends_7d = [
+            {'date': 'Thứ 2', 'views': 0, 'downloads': 0},
+            {'date': 'Thứ 3', 'views': 0, 'downloads': 0},
+            {'date': 'Thứ 4', 'views': 0, 'downloads': 0},
+            {'date': 'Thứ 5', 'views': 0, 'downloads': 0},
+            {'date': 'Thứ 6', 'views': 0, 'downloads': 0},
+            {'date': 'Thứ 7', 'views': 0, 'downloads': 0},
+            {'date': 'Chủ nhật', 'views': 0, 'downloads': 0},
+        ]
+
+    # Real Chart 1 (phần 30 ngày): 4 tuần gần nhất
+    chart_trends_30d = []
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT 
+                CASE 
+                    WHEN created_at >= NOW() - INTERVAL '7 days' THEN 'Tuần 4'
+                    WHEN created_at >= NOW() - INTERVAL '14 days' THEN 'Tuần 3'
+                    WHEN created_at >= NOW() - INTERVAL '21 days' THEN 'Tuần 2'
+                    ELSE 'Tuần 1'
+                END AS week_label,
+                COUNT(*) FILTER (WHERE action = 'VIEW') AS views,
+                COUNT(*) FILTER (WHERE action = 'DOWNLOAD') AS downloads
+            FROM document_activity_logs
+            WHERE action IN ('VIEW', 'DOWNLOAD')
+              AND created_at >= NOW() - INTERVAL '30 days'
+            GROUP BY week_label
+        """)
+        w_dict = {r[0]: {'views': r[1], 'downloads': r[2]} for r in cursor.fetchall()}
+
+    for w_name in ['Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4']:
+        info = w_dict.get(w_name, {'views': 0, 'downloads': 0})
+        chart_trends_30d.append({
+            'date': w_name,
+            'views': info['views'],
+            'downloads': info['downloads'],
+        })
+
+    # Real Chart 2: Top 5 tài liệu được tải và xem nhiều nhất từ bảng documents
+    top_docs_qs = Document.objects.filter(status=Document.APPROVED).order_by('-download_count', '-view_count')[:5]
+    top_documents = []
+    for d_obj in top_docs_qs:
+        short_title = d_obj.title[:20] + ("..." if len(d_obj.title) > 20 else "")
+        top_documents.append({
+            'id': d_obj.id,
+            'name': short_title,
+            'full_title': d_obj.title,
+            'downloads': d_obj.download_count,
+            'views': d_obj.view_count,
+        })
+
+    # Real Chart 3: Cơ cấu phân bổ học liệu thực tế từ DocumentVersion và Subject
+    import os
+    from documents.models import DocumentVersion
+    category_colors = ["#3b82f6", "#f97316", "#10b981", "#a855f7", "#ef4444"]
+    ext_labels = {
+        '.pdf': 'Tài liệu PDF',
+        '.docx': 'Tài liệu Word',
+        '.pptx': 'Slide PowerPoint',
+        '.txt': 'Văn bản thuần TXT',
+    }
+    ext_counts = {}
+    for ver in DocumentVersion.objects.all():
+        ext = os.path.splitext(ver.file)[1].lower() or '.txt'
+        label = ext_labels.get(ext, f'File {ext.upper()}')
+        ext_counts[label] = ext_counts.get(label, 0) + 1
+
+    category_breakdown = []
+    for idx, (lbl, cnt) in enumerate(sorted(ext_counts.items(), key=lambda x: x[1], reverse=True)[:5]):
+        category_breakdown.append({
+            'name': lbl,
+            'value': cnt,
+            'fill': category_colors[idx % len(category_colors)],
+        })
+
     # Recent activities from DocumentActivityLog
     days = request.GET.get('days')
     logs_qs = DocumentActivityLog.objects.select_related('document', 'user').order_by('-created_at')
@@ -121,6 +222,10 @@ def dashboard_stats_api(request):
         'stats': stats_summary,
         'subject_breakdown': subject_stats,
         'monthly_trends': monthly_trends,
+        'chart_trends_7d': chart_trends_7d,
+        'chart_trends_30d': chart_trends_30d,
+        'top_documents': top_documents,
+        'category_breakdown': category_breakdown,
         'recent_activities': acts,
         'indexing': indexing_stats,
         'data': stats_summary,

@@ -37,3 +37,4 @@ tzdata==2026.5
 tzlocal==5.4.4
 vine==5.1.0
 wcwidth==0.9.1
+pypdf==7.0.1

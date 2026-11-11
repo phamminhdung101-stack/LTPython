@@ -359,8 +359,35 @@ def document_list_api(request):
         qs = qs.filter(uploader_id=int(uploader_param))
 
     q = request.GET.get('q', '').strip()
+    matched_snippets = {}
     if q:
-        qs = qs.filter(Q(title__icontains=q) | Q(subject__subject_name__icontains=q))
+        # 1. Tìm trong nội dung đã lập chỉ mục (document_embeddings)
+        content_doc_ids = set()
+        try:
+            from ai_search.models import DocumentEmbedding
+            matching_chunks = DocumentEmbedding.objects.filter(chunk_text__icontains=q)
+            for chunk in matching_chunks:
+                c_doc_id = chunk.document_id
+                content_doc_ids.add(c_doc_id)
+                if c_doc_id not in matched_snippets:
+                    # Trích đoạn ngữ cảnh chứa từ khóa tìm kiếm
+                    text = chunk.chunk_text
+                    idx = text.lower().find(q.lower())
+                    start = max(0, idx - 45)
+                    end = min(len(text), idx + len(q) + 90)
+                    snip = ("..." if start > 0 else "") + text[start:end].strip() + ("..." if end < len(text) else "")
+                    matched_snippets[c_doc_id] = snip
+        except Exception:
+            pass
+
+        # 2. Kết hợp tìm kiếm đa trường: Tiêu đề, Mô tả, Môn học, Thẻ (Tags) và Nội dung tệp
+        qs = qs.filter(
+            Q(title__icontains=q) |
+            Q(description__icontains=q) |
+            Q(subject__subject_name__icontains=q) |
+            Q(tags__tag_name__icontains=q) |
+            Q(id__in=content_doc_ids)
+        ).distinct()
 
     subject_id = request.GET.get('subject_id')
     if subject_id:
@@ -403,6 +430,8 @@ def document_list_api(request):
             'id': d.id,
             'title': d.title,
             'description': d.description or '',
+            'matched_snippet': matched_snippets.get(d.id, ''),
+            'is_content_match': bool(matched_snippets.get(d.id)),
             'subject_id': d.subject_id,
             'subject': {
                 'subject_id': d.subject_id,
@@ -671,6 +700,12 @@ def create_version_api(request, pk):
             action='UPDATE',
             description=f"Phát hành phiên bản v{next_ver}.0: {change_summary}",
         )
+
+        # Lập chỉ mục nội dung cho phiên bản mới
+        try:
+            index_document(doc, user=user)
+        except Exception:
+            pass
 
     return _json_ok({
         'document_id': doc.id,
