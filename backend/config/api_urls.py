@@ -65,10 +65,16 @@ from dashboard.api_views import (
     dashboard_stats_api,
 )
 
-# AI Search
+# AI Search & RAG
 from ai_search.api_views import (
+    AIChatAPIView,
     AIQueryAPIView,
-    AIHistoryAPIView,
+    AIHistoryListAPIView,
+    AIHistoryDetailAPIView,
+    AIDocumentProcessAPIView,
+    AIDocumentStatusAPIView,
+    AIDocumentSummaryAPIView,
+    AIDocumentSuggestTagsAPIView,
 )
 
 app_name = 'api'
@@ -131,7 +137,13 @@ urlpatterns = [
     # ── 8. Dashboard Statistics ──
     path('dashboard/stats/', dashboard_stats_api, name='api_dashboard_stats'),
 
-    # ── 9. AI Search ──
+    # ── 9. AI Search & RAG ──
+    path('ai/chat/', AIChatAPIView.as_view(), name='api_ai_chat'),
     path('ai/query/', AIQueryAPIView.as_view(), name='api_ai_query'),
-    path('ai/history/', AIHistoryAPIView.as_view(), name='api_ai_history'),
+    path('ai/history/', AIHistoryListAPIView.as_view(), name='api_ai_history'),
+    path('ai/history/<int:query_id>/', AIHistoryDetailAPIView.as_view(), name='api_ai_history_detail'),
+    path('ai/documents/<int:pk>/process/', AIDocumentProcessAPIView.as_view(), name='api_ai_document_process'),
+    path('ai/documents/<int:pk>/status/', AIDocumentStatusAPIView.as_view(), name='api_ai_document_status'),
+    path('ai/documents/<int:pk>/summary/', AIDocumentSummaryAPIView.as_view(), name='api_ai_document_summary'),
+    path('ai/documents/<int:pk>/suggest-tags/', AIDocumentSuggestTagsAPIView.as_view(), name='api_ai_document_suggest_tags'),
 ]

@@ -114,6 +114,9 @@ class AIAssistantState(rx.State):
     show_citation_modal: bool = False
     active_citation: Citation = Citation()
 
+    # Lịch sử câu hỏi đã hỏi từ PostgreSQL qua REST API
+    past_queries: List[Dict[str, Any]] = []
+
     def set_input_text(self, value: str):
         self.input_text = value
 
@@ -143,6 +146,41 @@ class AIAssistantState(rx.State):
         self.input_text = prompt
         return self.send_message()
 
+    def load_history(self):
+        """Tải lịch sử câu hỏi của người dùng từ API PostgreSQL."""
+        try:
+            import httpx
+            resp = httpx.get("http://127.0.0.1:8000/api/ai/history/", timeout=3.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                self.past_queries = data.get("history", [])[:10]
+        except Exception:
+            pass
+
+    def select_history_item(self, item: Dict[str, Any]):
+        """Nạp lại câu hỏi từ lịch sử vào cuộc hội thoại."""
+        q_text = item.get("query_text", "")
+        a_text = item.get("ai_response", "")
+        if not q_text:
+            return
+        time_now = datetime.now().strftime("%H:%M")
+        self.chat_history.append(ChatMessage(
+            id=f"msg_{len(self.chat_history) + 1}",
+            sender="user",
+            content=q_text,
+            timestamp=time_now,
+            mode="rag",
+            citations=[],
+        ))
+        self.chat_history.append(ChatMessage(
+            id=f"msg_{len(self.chat_history) + 2}",
+            sender="ai",
+            content=a_text,
+            timestamp=time_now,
+            mode="rag",
+            citations=[],
+        ))
+
     def send_message(self):
         text = self.input_text.strip()
         if not text:
@@ -163,30 +201,51 @@ class AIAssistantState(rx.State):
         self.chat_history.append(user_msg)
         self.input_text = ""
 
-        # 2. Xử lý câu trả lời AI kết nối PostgreSQL RAG REST API
+        # 2. Xử lý câu trả lời AI kết nối PostgreSQL RAG REST API (POST /api/ai/chat/)
         ai_content = ""
         citations = []
         try:
             import httpx
-            resp = httpx.post("http://127.0.0.1:8000/api/ai/query/", json={"query": text}, timeout=5.0)
+            payload = {"query": text}
+            # Gọi API chat RAG
+            resp = httpx.post("http://127.0.0.1:8000/api/ai/chat/", json=payload, timeout=12.0)
             if resp.status_code == 200:
                 res_data = resp.json()
                 ai_content = res_data.get("answer", "")
-                raw_sources = res_data.get("sources", [])
-                for i, s in enumerate(raw_sources):
-                    r_score = s.get("relevance_score")
-                    score_str = f"{round(float(r_score)*100, 1)}%" if r_score is not None else "95.0%"
-                    snippet_str = s.get("relevant_snippet") or s.get("description") or "Trích đoạn học liệu liên quan từ cơ sở dữ liệu."
-                    doc_id_val = s.get("document_id") or s.get("id") or 1
-                    citations.append(Citation(
-                        id=f"cit_{i+1}",
-                        doc_title=s.get("title", "Tài liệu học phần"),
-                        subject_code=s.get("subject_name") or "DocUni RAG",
-                        page=int(s.get("chunk_index", 0)) + 1,
-                        score=score_str,
-                        snippet=snippet_str,
-                        file_url=f"/api/documents/{doc_id_val}/download/",
-                    ))
+                raw_citations = res_data.get("citations") or []
+                raw_sources = res_data.get("sources") or []
+
+                if raw_citations:
+                    for i, c in enumerate(raw_citations):
+                        pct = c.get("relevance_percentage")
+                        if pct is None:
+                            score_val = c.get("relevance_score", 0.8)
+                            pct = int(round(float(score_val) * 100))
+                        doc_id = c.get("document_id") or 1
+                        citations.append(Citation(
+                            id=f"cit_{i+1}",
+                            doc_title=c.get("title", "Tài liệu học phần"),
+                            subject_code=c.get("subject_name") or "DocUni RAG",
+                            page=int(c.get("page_number", 1)),
+                            score=f"{pct}%",
+                            snippet=c.get("relevant_snippet", "Đoạn trích dẫn đối soát từ tài liệu."),
+                            file_url=f"/api/documents/{doc_id}/download/",
+                        ))
+                elif raw_sources:
+                    for i, s in enumerate(raw_sources):
+                        r_score = s.get("relevance_score")
+                        score_str = f"{round(float(r_score)*100, 1)}%" if r_score is not None else "95.0%"
+                        snippet_str = s.get("relevant_snippet") or s.get("description") or "Trích đoạn học liệu liên quan từ cơ sở dữ liệu."
+                        doc_id_val = s.get("document_id") or s.get("id") or 1
+                        citations.append(Citation(
+                            id=f"cit_{i+1}",
+                            doc_title=s.get("title", "Tài liệu học phần"),
+                            subject_code=s.get("subject_name") or "DocUni RAG",
+                            page=int(s.get("page_number", s.get("chunk_index", 0) + 1)),
+                            score=score_str,
+                            snippet=snippet_str,
+                            file_url=f"/api/documents/{doc_id_val}/download/",
+                        ))
         except Exception:
             pass
 
@@ -197,7 +256,7 @@ class AIAssistantState(rx.State):
                     id=f"gen_cite_{len(self.chat_history)}",
                     doc_title="Kho Giáo trình Tổng hợp DocUni",
                     subject_code=self.subject_filter if self.subject_filter != "ALL" else "IT/ECO",
-                    page=12,
+                    page=1,
                     score="88.6%",
                     snippet=f"Trích xuất liên quan đến truy vấn '{text[:40]}...': Hệ thống DocUni đã đối soát ngữ nghĩa từ các tài liệu tham khảo chính thức và đề thi môn học.",
                     file_url="/documents",
@@ -223,6 +282,11 @@ class AIAssistantState(rx.State):
             citations=citations,
         )
         self.chat_history.append(ai_msg)
+        # Nạp lại lịch sử câu hỏi ngầm
+        try:
+            self.load_history()
+        except Exception:
+            pass
 
 
 # ─── UI Helper Components ────────────────────────────────────────────────────

@@ -180,6 +180,26 @@ python backend\test_api_endpoints.py
 ```
 Kiểm tra 14 kịch bản xác thực, health check, phân quyền người dùng, chống tự nâng quyền.
 
+### 4. Kiểm thử Toàn diện Hệ thống AI RAG (`test_ai_rag_system.py`):
+```powershell
+python backend\test_ai_rag_system.py
+```
+Kiểm tra 19 test cases toàn diện của hệ thống AI RAG:
+1. DocumentProcessor: Trích xuất nội dung TXT, DOCX, PPTX giữ số trang/slide; xử lý an toàn file rỗng.
+2. TextChunker: Phân đoạn văn bản có overlap, giữ `chunk_index` và `page_number`.
+3. EmbeddingService: Sinh vector chuẩn hóa L2 (norm = 1.0), tính Cosine Similarity chính xác.
+4. VectorSearchService: Tìm kiếm vector kết hợp RBAC ACL (Admin, Lecturer, Student).
+5. RAG Coordinator & Citations: Trả lời câu hỏi học tập, trích dẫn số trang, snippet và % tương đồng.
+6. SummaryService: Tóm tắt nội dung tài liệu tự động bằng AI.
+7. TagSuggestionService: Gợi ý thẻ học liệu thông minh từ nội dung văn bản.
+8. REST API Endpoints: Kiểm thử đầy đủ 6 endpoints REST API (`/api/ai/chat/`, `/api/ai/history/`, v.v.).
+
+### 5. Kiểm thử 10 Kịch bản Nghiệp vụ Cốt lõi (`test_comprehensive_10_scenarios.py`):
+```powershell
+python backend\test_comprehensive_10_scenarios.py
+```
+Kiểm thử hồi quy 10/10 kịch bản: Thư mục, Upload & ACL, Versioning, Thẻ, Duyệt tài liệu, Nhật ký hoạt động, Indexing, Tìm kiếm, Dashboard quản trị và Tích hợp Frontend-Backend không WebSocket (PASS 100%).
+
 ---
 
 ## 8. Cấu trúc thư mục dự án
@@ -187,26 +207,36 @@ Kiểm tra 14 kịch bản xác thực, health check, phân quyền người dù
 ```text
 document_knowledge_base/
 ├── backend/                      # Django REST API Backend
-│   ├── config/                   # Cấu hình settings.py, urls.py
-│   ├── accounts/                 # User, Role, Authentication, JWT
-│   ├── academics/                # Quản lý Khoa (Departments), Lớp, Môn học
-│   ├── documents/                # Quản lý Kho tài liệu, File storage, Phê duyệt
+│   ├── config/                   # Cấu hình settings.py, urls.py, api_urls.py
+│   ├── accounts/                 # User, Role, Authentication, JWT, Custom Auth Backend
+│   ├── academics/                # Quản lý Khoa (Departments), Lớp, Môn học, Thư mục
+│   ├── documents/                # Quản lý Kho tài liệu, File storage, Phê duyệt, Versioning
 │   │   ├── storage_service.py    # Dịch vụ Local FileSystemStorage & Anti Path Traversal
-│   │   ├── api_views.py          # API Upload, Download, Delete, Approve, List
+│   │   ├── indexing_service.py   # Lập chỉ mục tài liệu vào PostgreSQL
+│   │   ├── api_views.py          # API Upload, Download, Delete, Approve, List, Versioning
 │   │   ├── models.py             # Models ánh xạ PostgreSQL (managed = False)
 │   │   └── serializers.py        # Serializers gồm 15 trường metadata
-│   ├── media/                    # Thư mục lưu file vật lý cục bộ
-│   │   └── documents/YYYY/MM/    # File thực tế lưu trữ theo năm/tháng
-│   ├── ai_search/                # API tìm kiếm ngữ cảnh AI
-│   ├── permissions/              # RBAC Permission classes
-│   ├── .env.example              # Mẫu biến môi trường
-│   ├── requirements.txt          # Thư viện phụ thuộc backend
-│   ├── test_auth_rbac_full.py    # Bộ kiểm thử toàn diện xác thực & RBAC (15 ca)
-│   ├── test_file_storage.py      # Bộ kiểm thử lưu trữ file cục bộ (15 ca)
-│   └── test_api_endpoints.py     # Bộ kiểm thử API & Phân quyền (14 ca)
+│   ├── ai_search/                # Hệ thống AI Tìm kiếm Ngữ cảnh (RAG)
+│   │   ├── services/             # Module AI độc lập, mô-đun hóa cao:
+│   │   │   ├── processor.py      # Trích xuất văn bản PDF, DOCX, PPTX theo số trang/slide
+│   │   │   ├── chunker.py        # Phân đoạn có overlap, giữ page_number và chunk_index
+│   │   │   ├── embedding.py      # Sinh vector chuẩn hóa L2, tương thích FLOAT[] & pgvector
+│   │   │   ├── vector_search.py  # Tìm kiếm vector kết hợp RBAC ACL phân quyền
+│   │   │   ├── llm_service.py    # Giao tiếp LLM (OpenAI/Gemini/Local Synthesizer)
+│   │   │   ├── citation_service.py# Định dạng trích dẫn nguồn (số trang, snippet, %)
+│   │   │   ├── summary_service.py# Tóm tắt tài liệu tự động bằng AI
+│   │   │   ├── tag_suggester.py  # Đề xuất nhãn học liệu từ nội dung
+│   │   │   └── rag_service.py    # Bộ điều phối trung tâm Ingestion & Query
+│   │   ├── api_views.py          # Các endpoint REST API AI (chat, history, summary, tags)
+│   │   └── models.py             # DocumentEmbedding, AIQuery, AIQuerySource
+│   ├── permissions/              # RBAC Permission classes & Document Access ACL
+│   ├── test_ai_rag_system.py     # Bộ kiểm thử 19 ca hệ thống AI RAG
+│   └── test_comprehensive_10_scenarios.py # Bộ kiểm thử 10 kịch bản nghiệp vụ
 ├── frontend_app/                 # Python Reflex Frontend
-│   ├── frontend_app/             # Giao diện sinh viên, giảng viên, admin, auth
+│   ├── frontend_app/             # Giao diện sinh viên, giảng viên, admin, auth, AI
 │   └── rxconfig.py               # Cấu hình cổng Reflex (backend_port = 8001)
-├── database/                     # Script SQL khởi tạo schema mẫu
+├── run_backend.bat               # Khởi chạy Django Backend (port 8000)
+├── run_frontend.bat              # Khởi chạy Reflex Frontend (port 3000, event 8001)
+├── run_all.bat                   # Khởi chạy cả Backend và Frontend
 └── README.md                     # Hướng dẫn dự án
 ```

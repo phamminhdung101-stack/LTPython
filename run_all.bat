@@ -9,8 +9,8 @@ start "DocUni Django Backend" cmd /k "cd /d "%~dp0" && call venv\Scripts\activat
 
 timeout /t 3 /nobreak >nul
 
-echo 2. Dang mo cua so Reflex Frontend (port 3000)...
-start "DocUni Reflex Frontend" cmd /k "cd /d "%~dp0frontend_app" && call ..\venv\Scripts\activate.bat && reflex run"
+echo 2. Dang mo cua so Reflex Frontend (port 3000, event port 8001)...
+start "DocUni Reflex Frontend" cmd /k "cd /d "%~dp0frontend_app" && call ..\venv\Scripts\activate.bat && reflex run --backend-port 8001"
 
 echo.
 echo ========================================================
