@@ -3,12 +3,15 @@ from .models import Department, Class, Subject
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
+    department_id = serializers.IntegerField(source='id', read_only=True)
+
     class Meta:
         model = Department
         fields = ['department_id', 'department_name']
 
 
 class ClassSerializer(serializers.ModelSerializer):
+    class_id = serializers.IntegerField(source='id', read_only=True)
     department = DepartmentSerializer(read_only=True)
     department_id = serializers.IntegerField(write_only=True, required=False)
 
@@ -18,6 +21,7 @@ class ClassSerializer(serializers.ModelSerializer):
 
 
 class SubjectSerializer(serializers.ModelSerializer):
+    subject_id = serializers.IntegerField(source='id', read_only=True)
     department = DepartmentSerializer(read_only=True)
     department_id = serializers.IntegerField(write_only=True, required=False)
 

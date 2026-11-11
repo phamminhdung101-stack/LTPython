@@ -47,157 +47,107 @@ class PendingDoc:
     preview_text: str = ""
 
 
-# ─── Initial Mock Data ───────────────────────────────────────────────────────
-
-MOCK_PENDING_DOCS = [
-    PendingDoc(
-        id="pdoc_1",
-        title="Slide Tóm tắt Chương 5: Cây nhị phân và Cây AVL",
-        subject_code="IT202",
-        subject_name="Cấu trúc dữ liệu & GT",
-        faculty="CNTT",
-        proposed_folder="Slide Bài giảng",
-        doc_type="SLIDE",
-        type_label="Slide Bài giảng",
-        type_color="orange",
-        file_name="IT202_Slide_CayNhiPhan_AVL.pptx",
-        file_size="6.8 MB",
-        description="Em tổng hợp các thao tác xoay đơn LL, RR và xoay kép LR, RL trên cây AVL kèm mã giả thuật toán để các bạn dễ ôn thi.",
-        tags=["ctdl", "cay-avl", "slide", "it202"],
-        student_name="Lê Hoàng Nam",
-        student_id="2151010045",
-        student_class="D21CQCN01-B",
-        submitted_at="2026-10-13 08:30",
-        status="PENDING",
-        review_feedback="",
-        version="v1.0",
-        preview_text=(
-            "=== CHƯƠNG 5: CÂY NHỊ PHÂN TỰ CÂN BẰNG AVL ===\n\n"
-            "1. Định nghĩa Cây AVL:\n"
-            "Cây AVL là cây nhị phân tìm kiếm mà tại mỗi nút, chênh lệch chiều cao giữa cây con trái và cây con phải (hệ số cân bằng BF) không vượt quá 1:\n"
-            "   BF(v) = height(left) - height(right) ∈ {-1, 0, 1}\n\n"
-            "2. Các phép xoay cân bằng cơ bản:\n"
-            "• Phép xoay đơn LL: Mất cân bằng lệch trái-trái do chèn nút vào cây con trái của nút con trái. Thực hiện xoay phải tại gốc mất cân bằng.\n"
-            "• Phép xoay đơn RR: Mất cân bằng lệch phải-phải. Thực hiện xoay trái tại gốc mất cân bằng.\n"
-            "• Phép xoay kép LR: Mất cân bằng lệch trái-phải. Thực hiện xoay trái tại con trái, sau đó xoay phải tại gốc.\n"
-            "• Phép xoay kép RL: Mất cân bằng lệch phải-trái. Thực hiện xoay phải tại con phải, sau đó xoay trái tại gốc.\n\n"
-            "3. Độ phức tạp:\n"
-            "Thao tác tìm kiếm, chèn, xóa trên cây AVL luôn được đảm bảo ở mức tối ưu O(log n)."
-        ),
-    ),
-    PendingDoc(
-        id="pdoc_2",
-        title="Bộ 50 câu trắc nghiệm Ôn thi Kinh tế vi mô có giải thích",
-        subject_code="ECO101",
-        subject_name="Kinh tế vi mô",
-        faculty="KT",
-        proposed_folder="Đề thi & Đáp án",
-        doc_type="EXAM",
-        type_label="Đề thi & Đáp án",
-        type_color="red",
-        file_name="TracNghiem_KTVM_50Cau_GiaiThich.pdf",
-        file_size="3.4 MB",
-        description="Tổng hợp câu hỏi trắc nghiệm về độ co giãn, thặng dư tiêu dùng, cân bằng thị trường có giải thích chi tiết đáp án.",
-        tags=["ktvm", "trac-nghiem", "eco101"],
-        student_name="Trần Thị Mai",
-        student_id="2152010112",
-        student_class="D21CQKT02-B",
-        submitted_at="2026-10-12 17:15",
-        status="PENDING",
-        review_feedback="",
-        version="v1.0",
-        preview_text=(
-            "=== 50 CÂU TRẮC NGHIỆM KINH TẾ VI MÔ ÔN THI CUỐI KỲ ===\n\n"
-            "Câu 1: Khi giá hàng hóa X tăng 10% làm lượng cầu hàng hóa Y tăng 15%, hệ số co giãn chéo Exy là:\n"
-            "A. -1.5\n"
-            "B. +1.5 (Đáp án đúng)\n"
-            "C. +0.67\n"
-            "D. -0.67\n"
-            "=> Giải thích: Exy = %ΔQy / %ΔPx = 15% / 10% = +1.5 > 0 => X và Y là hai hàng hóa thay thế cho nhau.\n\n"
-            "Câu 2: Đường giới hạn khả năng sản xuất (PPF) dịch chuyển ra phía ngoài khi:\n"
-            "A. Tỷ lệ thất nghiệp trong nền kinh tế tăng cao\n"
-            "B. Nền kinh tế xảy ra lạm phát mạnh\n"
-            "C. Có sự cải tiến công nghệ hoặc tăng nguồn lực sản xuất (Đáp án đúng)\n"
-            "D. Chính phủ áp đặt mức giá trần đối với lương thực"
-        ),
-    ),
-    PendingDoc(
-        id="pdoc_3",
-        title="Bài tập lớn & Script SQL Quản lý chuỗi cửa hàng tiện lợi",
-        subject_code="IT305",
-        subject_name="Cơ sở dữ liệu",
-        faculty="CNTT",
-        proposed_folder="Bài tập & Đồ án",
-        doc_type="EXERCISE",
-        type_label="Bài tập lớn",
-        type_color="purple",
-        file_name="BTL_SQL_QLCuaHangTienLoi.sql",
-        file_size="1.9 MB",
-        description="Mã nguồn SQL tạo bảng, khóa chính, khóa ngoại và 15 stored procedures nghiệp vụ quản lý kho.",
-        tags=["csdl", "sql", "btl"],
-        student_name="Nguyễn Văn Hùng",
-        student_id="2151010088",
-        student_class="D21CQCN02-B",
-        submitted_at="2026-10-11 10:40",
-        status="REJECTED",
-        review_feedback="Mã nguồn SQL chưa có lệnh tạo Index cho các bảng có hơn 100k bản ghi. Vui lòng bổ sung lược đồ quan hệ và kịch bản test trước khi nộp lại.",
-        version="v1.0",
-        preview_text=(
-            "-- DATABASE SCHEMA: HE THONG QUAN LY CHUOI CUA HANG TIEN LOI\n"
-            "-- TAC GIA: NGUYEN VAN HUNG - D21CQCN02-B\n\n"
-            "CREATE TABLE Categories (\n"
-            "    CategoryID INT PRIMARY KEY IDENTITY(1,1),\n"
-            "    CategoryName NVARCHAR(100) NOT NULL,\n"
-            "    Description NVARCHAR(255)\n"
-            ");\n\n"
-            "CREATE TABLE Products (\n"
-            "    ProductID INT PRIMARY KEY IDENTITY(1,1),\n"
-            "    ProductName NVARCHAR(150) NOT NULL,\n"
-            "    CategoryID INT FOREIGN KEY REFERENCES Categories(CategoryID),\n"
-            "    UnitPrice DECIMAL(18,2) NOT NULL,\n"
-            "    UnitsInStock INT DEFAULT 0\n"
-            ");"
-        ),
-    ),
-    PendingDoc(
-        id="pdoc_4",
-        title="Sổ tay Từ vựng Chuyên ngành Tiếng Anh Hàng không ICAO",
-        subject_code="ENG201",
-        subject_name="Tiếng Anh chuyên ngành",
-        faculty="NN",
-        proposed_folder="Sách tham khảo",
-        doc_type="REFERENCE",
-        type_label="Tham khảo",
-        type_color="green",
-        file_name="Aviation_English_Vocabulary_ICAO.pdf",
-        file_size="5.2 MB",
-        description="Sổ tay tra cứu 300 thuật ngữ thoại buồng lái và kiểm soát không lưu chuẩn hóa ICAO.",
-        tags=["tieng-anh", "hang-khong", "icao"],
-        student_name="Phạm Minh Đức",
-        student_id="2253010023",
-        student_class="D22CQNN01-B",
-        submitted_at="2026-10-10 14:00",
-        status="APPROVED",
-        review_feedback="Tài liệu chất lượng cao, định dạng rõ ràng, phù hợp làm tài liệu học phần tham khảo bổ trợ.",
-        version="v1.0",
-        preview_text=(
-            "=== SỔ TAY THUẬT NGỮ THOẠI HÀNG KHÔNG CHUẨN ICAO ===\n\n"
-            "1. ROGER: Đã nhận đầy đủ toàn bộ thông tin vừa phát.\n"
-            "2. WILCO: Đã hiểu và sẽ tuân thủ thực hiện huấn lệnh (Will Comply).\n"
-            "3. SAY AGAIN: Đề nghị nhắc lại toàn bộ hoặc một phần thông điệp.\n"
-            "4. HOLD POSITION: Dừng lại ngay tại vị trí hiện tại trên đường lăn.\n"
-            "5. EXPEDITE: Yêu cầu thực hiện thao tác nhanh hơn bình thường để đảm bảo giãn cách an toàn."
-        ),
-    ),
-]
-
-
 # ─── State ───────────────────────────────────────────────────────────────────
 
 class LecturerApprovalState(rx.State):
-    """Quản lý hàng đợi và thao tác phê duyệt tài liệu sinh viên đóng góp."""
+    """Quản lý hàng đợi và thao tác phê duyệt tài liệu sinh viên đóng góp từ PostgreSQL thực tế."""
 
-    items: List[PendingDoc] = MOCK_PENDING_DOCS
+    items: List[PendingDoc] = []
+
+    def load_items(self):
+        try:
+            import httpx
+            resp = httpx.get("http://127.0.0.1:8000/api/documents/", timeout=3.0)
+            if resp.status_code == 200:
+                raw_docs = resp.json().get("documents") or resp.json().get("data") or []
+                loaded = []
+                for d in raw_docs:
+                    d_id = str(d.get("id") or d.get("document_id"))
+                    title = d.get("title", "")
+                    s_name = d.get("subject_name") or d.get("subject", {}).get("subject_name", "")
+                    dept_name = d.get("department_name") or "CNTT"
+                    status = str(d.get("status") or "PENDING").upper()
+                    u_name = d.get("uploader_name") or "Sinh viên"
+                    desc = d.get("description") or f"Tài liệu môn học {s_name}"
+                    created = str(d.get("created_at") or "")[:16]
+                    fname = d.get("file_name") or f"document_{d_id}.pdf"
+                    fsize = f"{round(float(d.get('file_size', 2097152)) / (1024*1024), 1)} MB"
+                    f_name = d.get("folder_name") or "Kho tài liệu"
+                    tags_list = d.get("tags") or ["học liệu", "đóng góp"]
+                    loaded.append(PendingDoc(
+                        id=d_id,
+                        title=title,
+                        subject_code=f"SUB_{d.get('subject_id', 1)}",
+                        subject_name=s_name,
+                        faculty=dept_name,
+                        proposed_folder=f_name,
+                        doc_type="TEXTBOOK",
+                        type_label="Học liệu",
+                        type_color="blue",
+                        file_name=fname,
+                        file_size=fsize,
+                        description=desc,
+                        tags=tags_list,
+                        student_name=u_name,
+                        student_id=str(d.get("uploader_id") or "SV01"),
+                        student_class="D21CQCN01-B",
+                        submitted_at=created,
+                        status=status,
+                        review_feedback="",
+                        version=str(d.get("latest_version") or "v1.0"),
+                        preview_text=desc,
+                    ))
+                self.items = loaded
+                if self.items and not self.selected_id:
+                    self.selected_id = self.items[0].id
+                return
+        except Exception:
+            pass
+
+        try:
+            import os, sys
+            backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+            if backend_dir not in sys.path:
+                sys.path.insert(0, backend_dir)
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+            import django
+            django.setup()
+            from documents.models import Document
+            loaded = []
+            for d in Document.objects.select_related('subject__department', 'uploader').all():
+                d_id = str(d.id)
+                s_name = d.subject.subject_name if d.subject else ""
+                dept_name = d.subject.department.department_name if (d.subject and d.subject.department) else "CNTT"
+                u_name = d.uploader.full_name if (d.uploader and d.uploader.full_name) else (d.uploader.username if d.uploader else "Sinh viên")
+                created = d.created_at.strftime("%Y-%m-%d %H:%M") if d.created_at else ""
+                loaded.append(PendingDoc(
+                    id=d_id,
+                    title=d.title,
+                    subject_code=f"SUB_{d.subject_id}",
+                    subject_name=s_name,
+                    faculty=dept_name,
+                    proposed_folder="Kho tài liệu",
+                    doc_type="TEXTBOOK",
+                    type_label="Học liệu",
+                    type_color="blue",
+                    file_name=f"document_{d_id}.pdf",
+                    file_size="2.5 MB",
+                    description=d.description or f"Tài liệu môn học {s_name}",
+                    tags=["học liệu"],
+                    student_name=u_name,
+                    student_id=str(d.uploader_id or "SV01"),
+                    student_class="D21CQCN01-B",
+                    submitted_at=created,
+                    status=d.status,
+                    review_feedback="",
+                    version="v1.0",
+                    preview_text=d.description or d.title,
+                ))
+            self.items = loaded
+            if self.items and not self.selected_id:
+                self.selected_id = self.items[0].id
+        except Exception:
+            self.items = []
     selected_id: str = "pdoc_1"
     filter_status: str = "PENDING"  # "ALL", "PENDING", "APPROVED", "REJECTED"
     search_query: str = ""
@@ -273,6 +223,16 @@ class LecturerApprovalState(rx.State):
 
     # Thao tác Phê duyệt
     def approve_doc(self, item_id: str):
+        try:
+            import httpx
+            httpx.post(f"http://127.0.0.1:8000/api/documents/{item_id}/approve/", timeout=5.0)
+        except Exception:
+            try:
+                from documents.models import Document as DjDoc
+                DjDoc.objects.filter(id=item_id).update(status="APPROVED", is_public=True)
+            except Exception:
+                pass
+
         updated = []
         for d in self.items:
             if d.id == item_id:
@@ -301,6 +261,16 @@ class LecturerApprovalState(rx.State):
             return rx.toast.error("Vui lòng nhập lý do từ chối để phản hồi cho sinh viên!")
 
         doc_id = self.selected_id
+        try:
+            import httpx
+            httpx.post(f"http://127.0.0.1:8000/api/documents/{doc_id}/reject/", json={"reason": reason}, timeout=5.0)
+        except Exception:
+            try:
+                from documents.models import Document as DjDoc
+                DjDoc.objects.filter(id=doc_id).update(status="REJECTED")
+            except Exception:
+                pass
+
         updated = []
         for d in self.items:
             if d.id == doc_id:

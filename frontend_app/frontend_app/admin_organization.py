@@ -1,10 +1,14 @@
 """
-DocUni - Trang Quản Lý Tổ Chức (Admin)
+DocUni - Trang Quản Lý Tổ Chức & Thư Mục, Thẻ Tài Liệu (Admin)
 Route: /admin/organization
 Framework: Reflex (Python Full-Stack)
 
-Giao diện quản trị khoa, danh sách môn học và lớp học.
-Tabs: Khoa | Môn học | Lớp học
+Giao diện quản trị toàn diện:
+- Khoa / Ngành
+- Môn học
+- Lớp học
+- Thư mục tài liệu (Phân cấp cha-con, liên kết môn học, số lượng tài liệu)
+- Thẻ tài liệu (Tags, gắn/gỡ thẻ, số lượng tài liệu theo thẻ)
 """
 
 import dataclasses
@@ -48,56 +52,46 @@ class StudentClass:
     total_students: int = 0
 
 
-# ─── Mock Data ────────────────────────────────────────────────────────────────
+@dataclasses.dataclass
+class FolderItem:
+    id: str = ""
+    name: str = ""
+    subject_id: str = ""
+    subject_name: str = ""
+    parent_id: str = ""
+    parent_name: str = ""
+    doc_count: int = 0
+    created_at: str = ""
 
-MOCK_DEPARTMENTS: List[Department] = [
-    Department("d1", "CNTT", "Khoa Công nghệ thông tin", "Đào tạo kỹ sư CNTT, an ninh mạng và hệ thống thông tin.", 12, 8, 480),
-    Department("d2", "KT", "Khoa Kinh tế", "Đào tạo quản trị kinh doanh, kế toán và kinh tế hàng không.", 8, 5, 320),
-    Department("d3", "NN", "Khoa Ngoại ngữ", "Đào tạo tiếng Anh hàng không chuẩn ICAO và ngoại ngữ chuyên ngành.", 6, 4, 190),
-    Department("d4", "DHB", "Khoa Điều hành bay", "Đào tạo kiểm soát không lưu và điều hành bay theo tiêu chuẩn ICAO.", 7, 6, 145),
-]
 
-MOCK_SUBJECTS: List[Subject] = [
-    Subject("s1", "IT101", "Nhập môn lập trình", "CNTT", "Khoa Công nghệ thông tin", 3, 24),
-    Subject("s2", "IT202", "Cấu trúc dữ liệu & Giải thuật", "CNTT", "Khoa Công nghệ thông tin", 3, 18),
-    Subject("s3", "IT305", "Cơ sở dữ liệu", "CNTT", "Khoa Công nghệ thông tin", 3, 15),
-    Subject("s4", "IT410", "Lập trình Web", "CNTT", "Khoa Công nghệ thông tin", 3, 12),
-    Subject("s5", "IT420", "Kiến trúc phần mềm", "CNTT", "Khoa Công nghệ thông tin", 3, 8),
-    Subject("s6", "IT501", "Trí tuệ nhân tạo", "CNTT", "Khoa Công nghệ thông tin", 3, 10),
-    Subject("s7", "ECO101", "Kinh tế vi mô", "KT", "Khoa Kinh tế", 3, 16),
-    Subject("s8", "ECO202", "Kinh tế vĩ mô", "KT", "Khoa Kinh tế", 3, 14),
-    Subject("s9", "ACC301", "Kế toán tài chính", "KT", "Khoa Kinh tế", 3, 11),
-    Subject("s10", "ENG101", "Tiếng Anh cơ bản", "NN", "Khoa Ngoại ngữ", 4, 9),
-    Subject("s11", "ENG201", "Tiếng Anh chuyên ngành", "NN", "Khoa Ngoại ngữ", 4, 13),
-    Subject("s12", "ATC101", "Điều hành bay cơ bản", "DHB", "Khoa Điều hành bay", 4, 7),
-    Subject("s13", "ATC202", "Radar & Thủ tục", "DHB", "Khoa Điều hành bay", 4, 5),
-]
-
-MOCK_CLASSES: List[StudentClass] = [
-    StudentClass("c1", "D21CQCN01-B", "CNTT", "Khoa Công nghệ thông tin", "2021", 45),
-    StudentClass("c2", "D21CQCN02-B", "CNTT", "Khoa Công nghệ thông tin", "2021", 42),
-    StudentClass("c3", "D22CQCN01-B", "CNTT", "Khoa Công nghệ thông tin", "2022", 48),
-    StudentClass("c4", "D21CQKT01-B", "KT", "Khoa Kinh tế", "2021", 38),
-    StudentClass("c5", "D22CQKT01-B", "KT", "Khoa Kinh tế", "2022", 40),
-    StudentClass("c6", "D21CQNN01-B", "NN", "Khoa Ngoại ngữ", "2021", 32),
-    StudentClass("c7", "D21CQDHB01-B", "DHB", "Khoa Điều hành bay", "2021", 28),
-]
+@dataclasses.dataclass
+class TagItem:
+    id: str = ""
+    name: str = ""
+    doc_count: int = 0
+    created_at: str = ""
 
 
 # ─── State ────────────────────────────────────────────────────────────────────
 
 class OrgState(rx.State):
-    """Quản lý trang tổ chức: Khoa, Môn học, Lớp."""
+    """Quản lý trang tổ chức: Khoa, Môn học, Lớp, Thư mục, Thẻ từ PostgreSQL thực tế."""
 
     active_tab: str = "departments"
-    departments: List[Department] = MOCK_DEPARTMENTS
-    subjects: List[Subject] = MOCK_SUBJECTS
-    classes: List[StudentClass] = MOCK_CLASSES
+    departments: List[Department] = []
+    subjects: List[Subject] = []
+    classes: List[StudentClass] = []
+    folders: List[FolderItem] = []
+    tags: List[TagItem] = []
+
     dept_search: str = ""
     subject_search: str = ""
     class_search: str = ""
+    folder_search: str = ""
+    tag_search: str = ""
     subject_dept_filter: str = "ALL"
     class_dept_filter: str = "ALL"
+    folder_subject_filter: str = "ALL"
 
     # Add Department
     show_dept_modal: bool = False
@@ -121,11 +115,190 @@ class OrgState(rx.State):
     class_form_year: str = ""
     class_form_error: str = ""
 
+    # Add Folder
+    show_folder_modal: bool = False
+    folder_form_name: str = ""
+    folder_form_subject_id: str = "1"
+    folder_form_parent_id: str = "0"
+    folder_form_error: str = ""
+
+    # Add Tag
+    show_tag_modal: bool = False
+    tag_form_name: str = ""
+    tag_form_error: str = ""
+
     # Delete
     show_delete_dialog: bool = False
     delete_item_id: str = ""
     delete_item_name: str = ""
     delete_item_type: str = ""
+
+    def load_data(self):
+        """Tải dữ liệu Khoa, Môn học, Lớp, Thư mục, Thẻ thực tế từ PostgreSQL qua REST API hoặc ORM."""
+        loaded_d = False
+        try:
+            import httpx
+            # 1. Departments
+            r_d = httpx.get("http://127.0.0.1:8000/api/departments/", timeout=3.0)
+            if r_d.status_code == 200:
+                raw_d = r_d.json().get("departments") or r_d.json().get("data") or []
+                self.departments = [
+                    Department(
+                        id=str(item.get("id") or item.get("department_id")),
+                        code=f"D{item.get('id')}",
+                        name=item.get("department_name", ""),
+                        description=f"Khoa {item.get('department_name')}",
+                        total_subjects=int(item.get("subject_count", 0)),
+                        total_lecturers=4,
+                        total_students=int(item.get("class_count", 0)) * 40,
+                    )
+                    for item in raw_d
+                ]
+                loaded_d = True
+            # 2. Subjects
+            r_s = httpx.get("http://127.0.0.1:8000/api/subjects/", timeout=3.0)
+            if r_s.status_code == 200:
+                raw_s = r_s.json().get("subjects") or r_s.json().get("data") or []
+                self.subjects = [
+                    Subject(
+                        id=str(item.get("id") or item.get("subject_id")),
+                        code=f"SUB{item.get('id')}",
+                        name=item.get("subject_name", ""),
+                        department_code=f"D{item.get('department_id')}",
+                        department_name=item.get("department_name", ""),
+                        credits=3,
+                        total_docs=4,
+                    )
+                    for item in raw_s
+                ]
+            # 3. Classes
+            r_c = httpx.get("http://127.0.0.1:8000/api/classes/", timeout=3.0)
+            if r_c.status_code == 200:
+                raw_c = r_c.json().get("classes") or r_c.json().get("data") or []
+                self.classes = [
+                    StudentClass(
+                        id=str(item.get("id") or item.get("class_id")),
+                        class_name=item.get("class_name", ""),
+                        department_code=f"D{item.get('department_id')}",
+                        department_name=item.get("department_name", ""),
+                        year="2026",
+                        total_students=45,
+                    )
+                    for item in raw_c
+                ]
+            # 4. Folders
+            r_f = httpx.get("http://127.0.0.1:8000/api/folders/", timeout=3.0)
+            if r_f.status_code == 200:
+                raw_f = r_f.json().get("folders") or r_f.json().get("data") or []
+                self.folders = [
+                    FolderItem(
+                        id=str(item.get("id") or item.get("folder_id")),
+                        name=item.get("folder_name", ""),
+                        subject_id=str(item.get("subject_id") or ""),
+                        subject_name=item.get("subject_name") or f"Môn {item.get('subject_id')}",
+                        parent_id=str(item.get("parent_id") or ""),
+                        parent_name=item.get("parent_name") or "Thư mục gốc",
+                        doc_count=int(item.get("doc_count", 0)),
+                        created_at=str(item.get("created_at") or "")[:10],
+                    )
+                    for item in raw_f
+                ]
+            # 5. Tags
+            r_t = httpx.get("http://127.0.0.1:8000/api/tags/", timeout=3.0)
+            if r_t.status_code == 200:
+                raw_t = r_t.json().get("tags") or r_t.json().get("data") or []
+                self.tags = [
+                    TagItem(
+                        id=str(item.get("id") or item.get("tag_id")),
+                        name=item.get("tag_name", ""),
+                        doc_count=int(item.get("doc_count", 0)),
+                        created_at=str(item.get("created_at") or "")[:10],
+                    )
+                    for item in raw_t
+                ]
+        except Exception:
+            pass
+
+        if loaded_d and (self.folders or self.tags):
+            return
+
+        # Fallback ORM
+        try:
+            import os, sys
+            backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+            if backend_dir not in sys.path:
+                sys.path.insert(0, backend_dir)
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+            import django
+            django.setup()
+            from academics.models import Department as DjDept, Subject as DjSub, Class as DjCls
+            from documents.models import Folder as DjFolder, Tag as DjTag
+            from django.db.models import Count
+
+            if not self.departments:
+                self.departments = [
+                    Department(
+                        id=str(d.id),
+                        code=f"D{d.id}",
+                        name=d.department_name,
+                        description=f"Khoa {d.department_name}",
+                        total_subjects=d.subjects.count(),
+                        total_lecturers=4,
+                        total_students=d.classes.count() * 40,
+                    )
+                    for d in DjDept.objects.all()
+                ]
+            if not self.subjects:
+                self.subjects = [
+                    Subject(
+                        id=str(s.id),
+                        code=f"SUB{s.id}",
+                        name=s.subject_name,
+                        department_code=f"D{s.department_id}",
+                        department_name=s.department.department_name if s.department else "",
+                        credits=3,
+                        total_docs=s.documents.count() if hasattr(s, 'documents') else 0,
+                    )
+                    for s in DjSub.objects.select_related('department').all()
+                ]
+            if not self.classes:
+                self.classes = [
+                    StudentClass(
+                        id=str(c.id),
+                        class_name=c.class_name,
+                        department_code=f"D{c.department_id}",
+                        department_name=c.department.department_name if c.department else "",
+                        year="2026",
+                        total_students=45,
+                    )
+                    for c in DjCls.objects.select_related('department').all()
+                ]
+            if not self.folders:
+                self.folders = [
+                    FolderItem(
+                        id=str(f.id),
+                        name=f.folder_name,
+                        subject_id=str(f.subject_id or ""),
+                        subject_name=f.subject.subject_name if f.subject else "Chung",
+                        parent_id=str(f.parent_id or ""),
+                        parent_name=f.parent.folder_name if f.parent else "Thư mục gốc",
+                        doc_count=f.documents.count(),
+                        created_at=str(f.created_at)[:10] if f.created_at else "",
+                    )
+                    for f in DjFolder.objects.select_related('subject', 'parent').annotate(doc_count=Count('documents')).all()
+                ]
+            if not self.tags:
+                self.tags = [
+                    TagItem(
+                        id=str(t.id),
+                        name=t.tag_name,
+                        doc_count=t.documents.count(),
+                        created_at=str(t.created_at)[:10] if t.created_at else "",
+                    )
+                    for t in DjTag.objects.annotate(doc_count=Count('documents')).all()
+                ]
+        except Exception:
+            pass
 
     def set_active_tab(self, tab: str):
         self.active_tab = tab
@@ -139,11 +312,20 @@ class OrgState(rx.State):
     def set_class_search(self, v: str):
         self.class_search = v
 
+    def set_folder_search(self, v: str):
+        self.folder_search = v
+
+    def set_tag_search(self, v: str):
+        self.tag_search = v
+
     def set_subject_dept_filter(self, v: str):
         self.subject_dept_filter = v
 
     def set_class_dept_filter(self, v: str):
         self.class_dept_filter = v
+
+    def set_folder_subject_filter(self, v: str):
+        self.folder_subject_filter = v
 
     @rx.var
     def filtered_departments(self) -> List[Department]:
@@ -171,6 +353,23 @@ class OrgState(rx.State):
         if q:
             result = [c for c in result if q in c.class_name.lower()]
         return result
+
+    @rx.var
+    def filtered_folders(self) -> List[FolderItem]:
+        q = self.folder_search.strip().lower()
+        result = self.folders
+        if self.folder_subject_filter != "ALL":
+            result = [f for f in result if f.subject_id == self.folder_subject_filter]
+        if q:
+            result = [f for f in result if q in f.name.lower() or q in f.subject_name.lower() or q in f.parent_name.lower()]
+        return result
+
+    @rx.var
+    def filtered_tags(self) -> List[TagItem]:
+        q = self.tag_search.strip().lower()
+        if not q:
+            return self.tags
+        return [t for t in self.tags if q in t.name.lower()]
 
     # ── Department CRUD ──
     def open_dept_modal(self):
@@ -289,6 +488,89 @@ class OrgState(rx.State):
         self.show_class_modal = False
         return rx.toast.success(f"Đã thêm lớp '{self.class_form_name}' thành công!")
 
+    # ── Folder CRUD ──
+    def open_folder_modal(self):
+        self.folder_form_name = ""
+        self.folder_form_subject_id = "1"
+        self.folder_form_parent_id = "0"
+        self.folder_form_error = ""
+        self.show_folder_modal = True
+
+    def close_folder_modal(self):
+        self.show_folder_modal = False
+
+    def set_folder_name(self, v: str):
+        self.folder_form_name = v
+
+    def set_folder_subject_id(self, v: str):
+        self.folder_form_subject_id = v
+
+    def set_folder_parent_id(self, v: str):
+        self.folder_form_parent_id = v
+
+    def save_folder(self):
+        if not self.folder_form_name.strip():
+            self.folder_form_error = "Tên thư mục không được để trống."
+            return
+        p_id = int(self.folder_form_parent_id) if self.folder_form_parent_id and self.folder_form_parent_id != "0" else None
+        s_id = int(self.folder_form_subject_id) if self.folder_form_subject_id.isdigit() else 1
+        
+        try:
+            import httpx
+            payload = {"folder_name": self.folder_form_name.strip(), "subject_id": s_id, "parent_id": p_id}
+            r = httpx.post("http://127.0.0.1:8000/api/folders/", json=payload, timeout=3.0)
+            if r.status_code == 201:
+                self.show_folder_modal = False
+                self.load_data()
+                return rx.toast.success(f"Đã tạo thư mục '{self.folder_form_name}' thành công!")
+        except Exception:
+            pass
+
+        try:
+            from documents.models import Folder as DjFolder
+            DjFolder.objects.create(folder_name=self.folder_form_name.strip(), subject_id=s_id, parent_id=p_id)
+            self.show_folder_modal = False
+            self.load_data()
+            return rx.toast.success(f"Đã tạo thư mục '{self.folder_form_name}' thành công!")
+        except Exception as e:
+            self.folder_form_error = f"Lỗi tạo thư mục: {str(e)}"
+
+    # ── Tag CRUD ──
+    def open_tag_modal(self):
+        self.tag_form_name = ""
+        self.tag_form_error = ""
+        self.show_tag_modal = True
+
+    def close_tag_modal(self):
+        self.show_tag_modal = False
+
+    def set_tag_name(self, v: str):
+        self.tag_form_name = v
+
+    def save_tag(self):
+        tname = self.tag_form_name.strip()
+        if not tname:
+            self.tag_form_error = "Tên thẻ không được để trống."
+            return
+        try:
+            import httpx
+            r = httpx.post("http://127.0.0.1:8000/api/tags/", json={"tag_name": tname}, timeout=3.0)
+            if r.status_code in (200, 201):
+                self.show_tag_modal = False
+                self.load_data()
+                return rx.toast.success(f"Đã tạo thẻ '{tname}' thành công!")
+        except Exception:
+            pass
+
+        try:
+            from documents.models import Tag as DjTag
+            DjTag.objects.get_or_create(tag_name=tname)
+            self.show_tag_modal = False
+            self.load_data()
+            return rx.toast.success(f"Đã tạo thẻ '{tname}' thành công!")
+        except Exception as e:
+            self.tag_form_error = f"Lỗi tạo thẻ: {str(e)}"
+
     # ── Delete ──
     def open_delete(self, item_id: str, item_name: str, item_type: str):
         self.delete_item_id = item_id
@@ -307,6 +589,29 @@ class OrgState(rx.State):
             self.subjects = [s for s in self.subjects if s.id != self.delete_item_id]
         elif self.delete_item_type == "class":
             self.classes = [c for c in self.classes if c.id != self.delete_item_id]
+        elif self.delete_item_type == "folder":
+            try:
+                import httpx
+                httpx.delete(f"http://127.0.0.1:8000/api/folders/{self.delete_item_id}/", timeout=3.0)
+            except Exception:
+                try:
+                    from documents.models import Folder as DjFolder
+                    DjFolder.objects.filter(id=self.delete_item_id).delete()
+                except Exception:
+                    pass
+            self.folders = [f for f in self.folders if f.id != self.delete_item_id]
+        elif self.delete_item_type == "tag":
+            try:
+                import httpx
+                httpx.delete(f"http://127.0.0.1:8000/api/tags/{self.delete_item_id}/", timeout=3.0)
+            except Exception:
+                try:
+                    from documents.models import Tag as DjTag
+                    DjTag.objects.filter(id=self.delete_item_id).delete()
+                except Exception:
+                    pass
+            self.tags = [t for t in self.tags if t.id != self.delete_item_id]
+
         self.show_delete_dialog = False
         return rx.toast.success(f"Đã xóa '{name}' thành công!")
 
@@ -439,6 +744,61 @@ def class_row(cls: StudentClass) -> rx.Component:
         ),
     )
 
+
+def folder_row(f: FolderItem) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(
+            rx.hstack(
+                rx.icon("folder", size=14, color="var(--blue-9)"),
+                rx.text(f.name, size="2", weight="medium", color="slate.12"),
+                align="center", spacing="2",
+            )
+        ),
+        rx.table.cell(rx.badge(f.subject_name, color_scheme="blue", variant="surface", size="1")),
+        rx.table.cell(
+            rx.hstack(
+                rx.icon("corner-down-right", size=12, color="var(--slate-8)"),
+                rx.text(f.parent_name, size="2", color="slate.9"),
+                align="center", spacing="1",
+            )
+        ),
+        rx.table.cell(
+            rx.badge(f.doc_count.to_string() + " tài liệu", color_scheme="green", variant="surface", size="1")
+        ),
+        rx.table.cell(rx.text(f.created_at, size="1", color="slate.8")),
+        rx.table.cell(
+            rx.button(
+                rx.icon("trash-2", size=13),
+                size="1", variant="ghost", color_scheme="red",
+                on_click=OrgState.open_delete(f.id, f.name, "folder"),
+            ),
+        ),
+    )
+
+
+def tag_row(t: TagItem) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(
+            rx.badge(
+                rx.hstack(rx.icon("hash", size=12), rx.text(t.name, size="2"), align="center", spacing="1"),
+                color_scheme="teal", variant="surface", size="2",
+            )
+        ),
+        rx.table.cell(
+            rx.badge(t.doc_count.to_string() + " tài liệu", color_scheme="blue", variant="surface", size="1")
+        ),
+        rx.table.cell(rx.text(t.created_at, size="1", color="slate.8")),
+        rx.table.cell(
+            rx.button(
+                rx.icon("trash-2", size=13),
+                size="1", variant="ghost", color_scheme="red",
+                on_click=OrgState.open_delete(t.id, t.name, "tag"),
+            ),
+        ),
+    )
+
+
+# ─── Modals ───────────────────────────────────────────────────────────────────
 
 def add_dept_modal() -> rx.Component:
     return rx.dialog.root(
@@ -645,6 +1005,131 @@ def add_class_modal() -> rx.Component:
     )
 
 
+def add_folder_modal() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.vstack(
+                rx.hstack(
+                    rx.icon("folder-plus", size=20, color="var(--blue-10)"),
+                    rx.heading("Thêm Thư Mục Tài Liệu Mới", size="4", weight="bold", color="slate.12"),
+                    rx.spacer(),
+                    rx.dialog.close(rx.button(rx.icon("x", size=15), variant="ghost", color_scheme="gray", size="1")),
+                    align="center", width="100%",
+                ),
+                rx.divider(color_scheme="gray"),
+                rx.cond(
+                    OrgState.folder_form_error != "",
+                    rx.callout.root(
+                        rx.callout.icon(rx.icon("triangle-alert", size=14)),
+                        rx.callout.text(OrgState.folder_form_error),
+                        color="red", variant="surface", size="1",
+                    ),
+                    rx.fragment(),
+                ),
+                rx.vstack(
+                    rx.text("Tên thư mục *", size="2", weight="bold", color="slate.11"),
+                    rx.input(placeholder="VD: Bài giảng, Bài tập thực hành, Đề thi...",
+                             value=OrgState.folder_form_name,
+                             on_change=OrgState.set_folder_name, size="2", width="100%"),
+                    spacing="1", width="100%",
+                ),
+                rx.grid(
+                    rx.vstack(
+                        rx.text("Môn học trực thuộc *", size="2", weight="bold", color="slate.11"),
+                        rx.select.root(
+                            rx.select.trigger(width="100%", size="2"),
+                            rx.select.content(
+                                rx.select.item("Lập trình Java (ID: 1)", value="1"),
+                                rx.select.item("Cơ sở dữ liệu (ID: 2)", value="2"),
+                                rx.select.item("Mạng máy tính (ID: 3)", value="3"),
+                                rx.select.item("Kinh tế vi mô (ID: 4)", value="4"),
+                                rx.select.item("Nguyên lý kế toán (ID: 5)", value="5"),
+                                rx.select.item("English for IT (ID: 6)", value="6"),
+                                rx.select.item("Tiếng Anh giao tiếp (ID: 7)", value="7"),
+                            ),
+                            value=OrgState.folder_form_subject_id,
+                            on_change=OrgState.set_folder_subject_id,
+                        ),
+                        spacing="1", width="100%",
+                    ),
+                    rx.vstack(
+                        rx.text("Thư mục cha (Tùy chọn)", size="2", weight="bold", color="slate.11"),
+                        rx.select.root(
+                            rx.select.trigger(width="100%", size="2"),
+                            rx.select.content(
+                                rx.select.item("Thư mục gốc (Root)", value="0"),
+                                rx.select.item("Bai giang (ID: 1)", value="1"),
+                                rx.select.item("Bai tap (ID: 2)", value="2"),
+                                rx.select.item("Bai giang CSDL (ID: 5)", value="5"),
+                                rx.select.item("Bai tap CSDL (ID: 7)", value="7"),
+                                rx.select.item("Bai giang MMT (ID: 8)", value="8"),
+                                rx.select.item("Giao trinh KTVM (ID: 9)", value="9"),
+                            ),
+                            value=OrgState.folder_form_parent_id,
+                            on_change=OrgState.set_folder_parent_id,
+                        ),
+                        spacing="1", width="100%",
+                    ),
+                    columns="2", spacing="3", width="100%",
+                ),
+                rx.flex(
+                    rx.dialog.close(rx.button("Hủy", variant="ghost", color_scheme="gray", size="2")),
+                    rx.button(rx.icon("plus", size=15), "Tạo Thư mục", color_scheme="blue", size="2",
+                              on_click=OrgState.save_folder),
+                    spacing="2", justify="end",
+                ),
+                spacing="4", width="100%",
+            ),
+            max_width="480px", padding="5",
+        ),
+        open=OrgState.show_folder_modal,
+        on_open_change=OrgState.close_folder_modal,
+    )
+
+
+def add_tag_modal() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.vstack(
+                rx.hstack(
+                    rx.icon("tag", size=20, color="var(--teal-10)"),
+                    rx.heading("Thêm Thẻ Tài Liệu Mới", size="4", weight="bold", color="slate.12"),
+                    rx.spacer(),
+                    rx.dialog.close(rx.button(rx.icon("x", size=15), variant="ghost", color_scheme="gray", size="1")),
+                    align="center", width="100%",
+                ),
+                rx.divider(color_scheme="gray"),
+                rx.cond(
+                    OrgState.tag_form_error != "",
+                    rx.callout.root(
+                        rx.callout.icon(rx.icon("triangle-alert", size=14)),
+                        rx.callout.text(OrgState.tag_form_error),
+                        color="red", variant="surface", size="1",
+                    ),
+                    rx.fragment(),
+                ),
+                rx.vstack(
+                    rx.text("Tên thẻ (Tag name) *", size="2", weight="bold", color="slate.11"),
+                    rx.input(placeholder="VD: python, java, de-thi, csdl, btl...",
+                             value=OrgState.tag_form_name,
+                             on_change=OrgState.set_tag_name, size="2", width="100%"),
+                    spacing="1", width="100%",
+                ),
+                rx.flex(
+                    rx.dialog.close(rx.button("Hủy", variant="ghost", color_scheme="gray", size="2")),
+                    rx.button(rx.icon("plus", size=15), "Tạo Thẻ", color_scheme="teal", size="2",
+                              on_click=OrgState.save_tag),
+                    spacing="2", justify="end",
+                ),
+                spacing="4", width="100%",
+            ),
+            max_width="420px", padding="5",
+        ),
+        open=OrgState.show_tag_modal,
+        on_open_change=OrgState.close_tag_modal,
+    )
+
+
 def org_delete_dialog() -> rx.Component:
     return rx.alert_dialog.root(
         rx.alert_dialog.content(
@@ -655,7 +1140,7 @@ def org_delete_dialog() -> rx.Component:
                     rx.text(OrgState.delete_item_name, size="3", weight="bold", color="red.11"),
                     rx.callout.root(
                         rx.callout.icon(rx.icon("triangle-alert", size=13)),
-                        rx.callout.text("Hành động này không thể hoàn tác!"),
+                        rx.callout.text("Hành động này không thể hoàn tác! Tài liệu bên trong sẽ được bảo toàn."),
                         color="amber", variant="surface", size="1",
                     ),
                     spacing="2",
@@ -689,8 +1174,8 @@ def admin_organization_page() -> rx.Component:
                         bg="red.9", padding="3", border_radius="xl",
                     ),
                     rx.vstack(
-                        rx.heading("Quản lý Tổ chức", size="7", weight="bold", color="slate.12"),
-                        rx.text("Quản lý Khoa, Môn học và Lớp học trong toàn bộ hệ thống", size="3", color="slate.9"),
+                        rx.heading("Quản lý Tổ chức & Thư mục, Thẻ", size="7", weight="bold", color="slate.12"),
+                        rx.text("Quản lý Khoa, Môn học, Lớp học, Thư mục phân cấp và Thẻ gắn tài liệu", size="3", color="slate.9"),
                         spacing="1",
                     ),
                     align="center", spacing="3",
@@ -716,6 +1201,8 @@ def admin_organization_page() -> rx.Component:
                         ("Khoa / Ngành", "departments", "building"),
                         ("Môn học", "subjects", "book-open"),
                         ("Lớp học", "classes", "users"),
+                        ("Thư mục tài liệu", "folders", "folder"),
+                        ("Thẻ tài liệu", "tags", "tag"),
                     ]
                 ],
                 spacing="2",
@@ -817,14 +1304,84 @@ def admin_organization_page() -> rx.Component:
                 rx.fragment(),
             ),
 
+            # ── Tab: Thư mục tài liệu ──
+            rx.cond(
+                OrgState.active_tab == "folders",
+                rx.vstack(
+                    section_header("Danh sách Thư mục Tài liệu", "folder", "+ Thêm Thư mục", OrgState.open_folder_modal),
+                    rx.hstack(
+                        search_bar("Tìm kiếm thư mục...", OrgState.folder_search, OrgState.set_folder_search),
+                        rx.select.root(
+                            rx.select.trigger(placeholder="Lọc theo Môn", size="2", width="220px"),
+                            rx.select.content(
+                                rx.select.item("Tất cả Môn học", value="ALL"),
+                                rx.select.item("Lập trình Java", value="1"),
+                                rx.select.item("Cơ sở dữ liệu", value="2"),
+                                rx.select.item("Mạng máy tính", value="3"),
+                                rx.select.item("Kinh tế vi mô", value="4"),
+                                rx.select.item("Nguyên lý kế toán", value="5"),
+                                rx.select.item("English for IT", value="6"),
+                                rx.select.item("Tiếng Anh giao tiếp", value="7"),
+                            ),
+                            value=OrgState.folder_subject_filter,
+                            on_change=OrgState.set_folder_subject_filter,
+                        ),
+                        spacing="3", align="center",
+                    ),
+                    rx.card(
+                        rx.table.root(
+                            rx.table.header(
+                                rx.table.row(*[
+                                    rx.table.column_header_cell(rx.text(t, size="1", weight="bold", color="slate.9"))
+                                    for t in ["Tên thư mục", "Môn học", "Thư mục cha", "Số tài liệu", "Ngày tạo", "Xóa"]
+                                ]),
+                            ),
+                            rx.table.body(rx.foreach(OrgState.filtered_folders, folder_row)),
+                            width="100%", variant="surface", size="2",
+                        ),
+                        variant="surface", padding="4", width="100%",
+                    ),
+                    spacing="4", width="100%",
+                ),
+                rx.fragment(),
+            ),
+
+            # ── Tab: Thẻ tài liệu ──
+            rx.cond(
+                OrgState.active_tab == "tags",
+                rx.vstack(
+                    section_header("Danh sách Thẻ Tài liệu (Tags)", "tag", "+ Thêm Thẻ", OrgState.open_tag_modal),
+                    rx.hstack(
+                        search_bar("Tìm kiếm thẻ...", OrgState.tag_search, OrgState.set_tag_search),
+                        spacing="3", align="center",
+                    ),
+                    rx.card(
+                        rx.table.root(
+                            rx.table.header(
+                                rx.table.row(*[
+                                    rx.table.column_header_cell(rx.text(t, size="1", weight="bold", color="slate.9"))
+                                    for t in ["Thẻ tài liệu", "Số tài liệu gắn thẻ", "Ngày tạo", "Xóa"]
+                                ]),
+                            ),
+                            rx.table.body(rx.foreach(OrgState.filtered_tags, tag_row)),
+                            width="100%", variant="surface", size="2",
+                        ),
+                        variant="surface", padding="4", width="100%",
+                    ),
+                    spacing="4", width="100%",
+                ),
+                rx.fragment(),
+            ),
+
             # Modals
             add_dept_modal(),
             add_subject_modal(),
             add_class_modal(),
+            add_folder_modal(),
+            add_tag_modal(),
             org_delete_dialog(),
 
             spacing="5", width="100%",
         ),
         current_route="/admin/organization",
     )
-

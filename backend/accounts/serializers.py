@@ -5,6 +5,8 @@ from academics.serializers import DepartmentSerializer, ClassSerializer
 
 
 class RoleSerializer(serializers.ModelSerializer):
+    role_id = serializers.IntegerField(source='id', read_only=True)
+
     class Meta:
         model = Role
         fields = ['role_id', 'role_name']
@@ -12,6 +14,7 @@ class RoleSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer lấy thông tin người dùng (an toàn - không bao giờ trả về password/hash)"""
+    user_id = serializers.IntegerField(source='id', read_only=True)
     role = RoleSerializer(read_only=True)
     department = DepartmentSerializer(read_only=True)
     student_class = ClassSerializer(read_only=True)

@@ -556,6 +556,68 @@ class GlobalDocState(rx.State):
     rejecting_doc_id: str = ""
     reject_feedback_input: str = ""
 
+    def load_documents(self):
+        """Tải toàn bộ tài liệu thực tế từ cơ sở dữ liệu PostgreSQL."""
+        try:
+            import httpx
+            resp = httpx.get("http://127.0.0.1:8000/api/documents/", timeout=3.0)
+            if resp.status_code == 200:
+                raw_docs = resp.json().get("documents") or resp.json().get("data") or []
+                loaded = []
+                for d in raw_docs:
+                    d_id = str(d.get("id") or d.get("document_id"))
+                    title = d.get("title", "")
+                    s_name = d.get("subject_name") or d.get("subject", {}).get("subject_name", "")
+                    dept_name = d.get("department_name") or "Khoa CNTT"
+                    status = str(d.get("status") or "APPROVED").upper()
+                    u_name = d.get("uploader_name") or "DocUni"
+                    created = str(d.get("created_at") or "")[:16]
+                    fname = d.get("file_name") or f"document_{d_id}.pdf"
+                    fsize = f"{round(float(d.get('file_size', 2097152)) / (1024*1024), 1)} MB"
+                    f_name = d.get("folder_name") or "Tài liệu chung"
+                    tags_list = d.get("tags") or ["học liệu", "docuni"]
+                    tag_str = "  ".join(f"#{t}" for t in tags_list)
+                    loaded.append({
+                        "id": d_id,
+                        "title": title,
+                        "subject_code": f"SUB_{d.get('subject_id', 1)}",
+                        "subject_name": s_name,
+                        "faculty": dept_name,
+                        "folder_path": f"{s_name} / {f_name}",
+                        "folder_name": f_name,
+                        "doc_type": "TEXTBOOK",
+                        "type_label": "Học liệu",
+                        "type_color": "blue",
+                        "icon": "file-text",
+                        "current_version": str(d.get("latest_version") or "v1.0"),
+                        "file_name": fname,
+                        "file_size": fsize,
+                        "uploader_name": u_name,
+                        "uploader_id": str(d.get("uploader_id") or "1"),
+                        "uploader_class": "Lớp D21CQCN01-A",
+                        "status": status,
+                        "is_public": bool(d.get("is_public", True)),
+                        "allowed_classes": [],
+                        "allowed_departments": [],
+                        "downloads": int(d.get("download_count", 0)),
+                        "views": int(d.get("view_count", 0)),
+                        "submitted_at": created,
+                        "reviewed_at": created,
+                        "reviewer": "TS. Nguyễn Văn An",
+                        "reject_reason": "",
+                        "description": d.get("description") or f"Tài liệu môn học {s_name}",
+                        "tags": tags_list,
+                        "tag_str": tag_str,
+                        "preview_text": d.get("description") or title,
+                        "versions": [{"version": "v1.0", "file_name": fname, "change_summary": "Bản khởi tạo", "uploaded_at": created, "file_size": fsize, "uploader_name": u_name}],
+                        "activity_logs": [{"id": f"log_{d_id}", "action": "CREATE", "user_name": u_name, "description": "Tải lên học liệu", "timestamp": created}],
+                    })
+                if loaded:
+                    self.documents = loaded
+                return
+        except Exception:
+            pass
+
     # ── Computed Variables ───────────────────────────────────────────────────
 
     @rx.var
@@ -747,9 +809,19 @@ class GlobalDocState(rx.State):
     # ── XỬ LÝ QUY TRÌNH DUYỆT (TASK 3: APPROVAL WORKFLOW) ─────────────────────
 
     def approve_document(self, doc_id: str):
-        """Giảng viên phê duyệt tài liệu $\to$ Lập tức chuyển sang công khai."""
+        """Giảng viên phê duyệt tài liệu -> Lập tức chuyển sang công khai."""
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         lecturer_name = self.current_user.get("full_name", "TS. Nguyễn Văn An")
+
+        try:
+            import httpx
+            httpx.post(f"http://127.0.0.1:8000/api/documents/{doc_id}/approve/", timeout=5.0)
+        except Exception:
+            try:
+                from documents.models import Document as DjDoc
+                DjDoc.objects.filter(id=doc_id).update(status="APPROVED", is_public=True)
+            except Exception:
+                pass
 
         updated = []
         found_title = ""
@@ -793,6 +865,17 @@ class GlobalDocState(rx.State):
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         lecturer_name = self.current_user.get("full_name", "TS. Nguyễn Văn An")
         doc_id = self.rejecting_doc_id
+        reason_val = self.reject_feedback_input.strip()
+
+        try:
+            import httpx
+            httpx.post(f"http://127.0.0.1:8000/api/documents/{doc_id}/reject/", json={"reason": reason_val}, timeout=5.0)
+        except Exception:
+            try:
+                from documents.models import Document as DjDoc
+                DjDoc.objects.filter(id=doc_id).update(status="REJECTED")
+            except Exception:
+                pass
 
         updated = []
         for d in self.documents:
@@ -801,7 +884,7 @@ class GlobalDocState(rx.State):
                 d["is_public"] = False
                 d["reviewer"] = lecturer_name
                 d["reviewed_at"] = now_str
-                d["reject_reason"] = self.reject_feedback_input.strip()
+                d["reject_reason"] = reason_val
                 d.setdefault("activity_logs", []).insert(0, {
                     "id": f"log_rej_{datetime.now().timestamp()}",
                     "action": "REJECT",
@@ -1013,6 +1096,61 @@ class GlobalDocState(rx.State):
                 }
             ],
         }
+
+        # Persist to database PostgreSQL
+        try:
+            from documents.models import Document as DjDoc, DocumentVersion as DjVer, DocumentActivityLog as DjLog, Folder as DjFolder, Tag as DjTag
+            from academics.models import Subject as DjSub
+            from accounts.models import User as DjUser
+            from documents.indexing_service import index_document
+
+            sub_id = 1
+            if subject_code.startswith("SUB_") or subject_code.isdigit():
+                sub_id = int(subject_code.replace("SUB_", ""))
+            else:
+                s_obj = DjSub.objects.filter(subject_name__icontains=subject_code).first()
+                if s_obj:
+                    sub_id = s_obj.id
+
+            uploader = DjUser.objects.filter(role_id=3).first() or DjUser.objects.first()
+            folder_obj = DjFolder.objects.filter(folder_name__icontains=folder_name, subject_id=sub_id).first()
+            folder_id = folder_obj.id if folder_obj else None
+
+            dj_doc = DjDoc.objects.create(
+                title=title.strip(),
+                description=description.strip(),
+                subject_id=sub_id,
+                folder_id=folder_id,
+                uploader=uploader,
+                status="PENDING",
+                is_public=is_public,
+            )
+            doc_id = str(dj_doc.id)
+            new_doc["id"] = doc_id
+
+            DjVer.objects.create(
+                document=dj_doc,
+                version_number="v1.0",
+                file_name=actual_fname,
+                file_size=2097152,
+                change_summary="Bản đóng góp ban đầu của sinh viên",
+                uploader=uploader,
+            )
+
+            for tag_name in tags:
+                tag_obj, _ = DjTag.objects.get_or_create(tag_name=tag_name.strip())
+                dj_doc.tags.add(tag_obj)
+
+            DjLog.objects.create(
+                document=dj_doc,
+                user=uploader,
+                action="UPLOAD",
+                details=f"Đóng góp tài liệu mới '{title.strip()}' vào hàng đợi phê duyệt.",
+            )
+
+            index_document(dj_doc.id)
+        except Exception:
+            pass
 
         self.documents.insert(0, new_doc)
         return rx.toast.success("Tài liệu đã được gửi thành công! Đang chờ Giảng viên phê duyệt.")

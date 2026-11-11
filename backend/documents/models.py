@@ -42,6 +42,19 @@ class Folder(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    @property
+    def document_id(self):
+        return self.id
+
+    @property
+    def breadcrumb(self):
+        path = []
+        curr = self
+        while curr:
+            path.insert(0, {'id': curr.id, 'name': curr.folder_name})
+            curr = curr.parent_folder
+        return path
+
     class Meta:
         db_table = 'folders'
         verbose_name = 'Thư mục'
@@ -107,6 +120,10 @@ class Document(models.Model):
         db_table='document_tags',
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def document_id(self):
+        return self.id
 
     class Meta:
         db_table = 'documents'
@@ -197,6 +214,10 @@ class DocumentActivityLog(models.Model):
     action = models.CharField(max_length=100, choices=ACTION_CHOICES)
     description = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def document_id(self):
+        return self.id
 
     class Meta:
         db_table = 'document_activity_logs'

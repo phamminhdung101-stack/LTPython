@@ -20,6 +20,7 @@ from .common_components import lecturer_page_wrapper
 
 @dataclasses.dataclass
 class DocVersion:
+    id: str = ""
     version: str = "v1.0"
     file_name: str = ""
     change_summary: str = ""
@@ -62,151 +63,6 @@ class LecturerDoc:
     permissions: List[DocPermission] = dataclasses.field(default_factory=list)
 
 
-# ─── Initial Mock Data ───────────────────────────────────────────────────────
-
-MOCK_LECTURER_DOCS = [
-    LecturerDoc(
-        id="ld1",
-        title="Giáo trình Cấu trúc dữ liệu và giải thuật 2026",
-        subject_code="IT202",
-        subject_name="Cấu trúc dữ liệu & GT",
-        faculty="CNTT",
-        folder_name="Giáo trình chính thức",
-        doc_type="TEXTBOOK",
-        type_label="Giáo trình",
-        type_color="blue",
-        current_version="v2.1",
-        file_name="GiaoTrinh_CTDL_GT_2026.pdf",
-        file_size="15.8 MB",
-        downloads=1240,
-        views=3150,
-        is_public=True,
-        permission_summary="Công khai toàn trường",
-        updated_at="2026-10-12 14:30",
-        description="Giáo trình cập nhật cấu trúc cây nhị phân, thuật toán đồ thị Dijkstra và bảng băm.",
-        tags=["ctdl", "python", "giai-thuat"],
-        versions=[
-            DocVersion("v2.1", "GiaoTrinh_CTDL_GT_2026.pdf", "Cập nhật bài tập cây AVL và Đồ thị", "2026-10-12 14:30", "15.8 MB"),
-            DocVersion("v2.0", "GiaoTrinh_CTDL_GT_v2.pdf", "Tái cấu trúc chương 4 cây nhị phân", "2026-09-01 09:15", "14.2 MB"),
-            DocVersion("v1.0", "GiaoTrinh_CTDL_GT_v1.pdf", "Bản phát hành đầu tiên", "2026-01-15 10:00", "12.0 MB"),
-        ],
-        permissions=[
-            DocPermission("p1", "PUBLIC", "Toàn bộ sinh viên học viện", True, True, False),
-        ],
-    ),
-    LecturerDoc(
-        id="ld2",
-        title="Bộ Slide Bài giảng: Cơ sở dữ liệu nâng cao",
-        subject_code="IT305",
-        subject_name="Cơ sở dữ liệu",
-        faculty="CNTT",
-        folder_name="Slide Bài giảng",
-        doc_type="SLIDE",
-        type_label="Slide Bài giảng",
-        type_color="orange",
-        current_version="v1.2",
-        file_name="Slide_CSDL_Chuong1_8.pptx",
-        file_size="28.4 MB",
-        downloads=890,
-        views=2100,
-        is_public=False,
-        permission_summary="Khoa CNTT (Lớp D21CQCN01-B)",
-        updated_at="2026-10-10 16:20",
-        description="Tổng hợp slide bài giảng chuẩn hóa 3NF, BCNF, Stored Procedures và Indexing.",
-        tags=["csdl", "sql", "slide"],
-        versions=[
-            DocVersion("v1.2", "Slide_CSDL_Chuong1_8.pptx", "Bổ sung ví dụ Transaction và ACID", "2026-10-10 16:20", "28.4 MB"),
-            DocVersion("v1.0", "Slide_CSDL_v1.pptx", "Slide cơ bản", "2026-08-20 08:30", "24.0 MB"),
-        ],
-        permissions=[
-            DocPermission("p2", "CLASS", "Lớp D21CQCN01-B", True, True, False),
-            DocPermission("p3", "DEPARTMENT", "Bộ môn Hệ thống thông tin", True, True, True),
-        ],
-    ),
-    LecturerDoc(
-        id="ld3",
-        title="Đề thi cuối kỳ Nhập môn lập trình (Kèm Đáp án)",
-        subject_code="IT101",
-        subject_name="Nhập môn lập trình",
-        faculty="CNTT",
-        folder_name="Đề thi & Đáp án",
-        doc_type="EXAM",
-        type_label="Đề thi & Đáp án",
-        type_color="red",
-        current_version="v1.0",
-        file_name="IT101_DeThi_HocKy1_2025.pdf",
-        file_size="4.2 MB",
-        downloads=1650,
-        views=4200,
-        is_public=True,
-        permission_summary="Công khai toàn trường",
-        updated_at="2026-10-05 11:10",
-        description="Đề thi 4 mã đề kèm đáp án thang điểm chi tiết cho sinh viên khóa 2024-2025.",
-        tags=["de-thi", "it101", "python"],
-        versions=[
-            DocVersion("v1.0", "IT101_DeThi_HocKy1_2025.pdf", "Bản chính thức", "2026-10-05 11:10", "4.2 MB"),
-        ],
-        permissions=[
-            DocPermission("p4", "PUBLIC", "Toàn trường", True, True, False),
-        ],
-    ),
-    LecturerDoc(
-        id="ld4",
-        title="Bài tập lớn Lập trình Web Full-Stack với Python & Reflex",
-        subject_code="IT410",
-        subject_name="Lập trình Web",
-        faculty="CNTT",
-        folder_name="Bài tập & Đồ án",
-        doc_type="EXERCISE",
-        type_label="Bài tập lớn",
-        type_color="purple",
-        current_version="v1.1",
-        file_name="BTL_Web_FullStack_Reflex.docx",
-        file_size="2.1 MB",
-        downloads=540,
-        views=1350,
-        is_public=False,
-        permission_summary="Lớp D21CQCN02-B",
-        updated_at="2026-10-08 09:40",
-        description="Đề cương yêu cầu đồ án môn học: Xây dựng hệ thống học liệu số với Reflex và Django REST.",
-        tags=["web", "btl", "reflex"],
-        versions=[
-            DocVersion("v1.1", "BTL_Web_FullStack_Reflex.docx", "Cập nhật tiêu chí chấm điểm và deadline", "2026-10-08 09:40", "2.1 MB"),
-            DocVersion("v1.0", "BTL_Web_Init.docx", "Đề bài ban đầu", "2026-09-15 14:00", "1.8 MB"),
-        ],
-        permissions=[
-            DocPermission("p5", "CLASS", "Lớp D21CQCN02-B", True, True, False),
-        ],
-    ),
-    LecturerDoc(
-        id="ld5",
-        title="Sách tham khảo: Thiết kế Hệ thống phân tán và Microservices",
-        subject_code="IT420",
-        subject_name="Kiến trúc phần mềm",
-        faculty="CNTT",
-        folder_name="Sách tham khảo",
-        doc_type="REFERENCE",
-        type_label="Tham khảo",
-        type_color="green",
-        current_version="v1.0",
-        file_name="Distributed_Systems_Reference.pdf",
-        file_size="42.5 MB",
-        downloads=380,
-        views=920,
-        is_public=True,
-        permission_summary="Công khai toàn trường",
-        updated_at="2026-09-28 15:00",
-        description="Tài liệu chuyên khảo về CAP theorem, Event-Driven Architecture và Message Queue.",
-        tags=["microservices", "distributed", "kien-truc"],
-        versions=[
-            DocVersion("v1.0", "Distributed_Systems_Reference.pdf", "Bản dịch tham khảo", "2026-09-28 15:00", "42.5 MB"),
-        ],
-        permissions=[
-            DocPermission("p6", "PUBLIC", "Toàn trường", True, True, False),
-        ],
-    ),
-]
-
 SUBJECT_LIST = [
     {"code": "ALL", "name": "Tất cả môn học"},
     {"code": "IT202", "name": "IT202 - Cấu trúc dữ liệu & GT"},
@@ -230,7 +86,55 @@ DOC_TYPES_SELECT = [
 class LecturerDocState(rx.State):
     """Quản trị toàn bộ vòng đời tài liệu của giảng viên."""
 
-    documents: List[LecturerDoc] = MOCK_LECTURER_DOCS
+    documents: List[LecturerDoc] = []
+
+    def load_documents(self):
+        try:
+            import httpx
+            resp = httpx.get("http://127.0.0.1:8000/api/documents/", timeout=3.0)
+            if resp.status_code == 200:
+                raw_docs = resp.json().get("documents") or resp.json().get("data") or []
+                loaded = []
+                for d in raw_docs:
+                    d_id = str(d.get("id") or d.get("document_id"))
+                    title = d.get("title", "")
+                    s_name = d.get("subject_name") or d.get("subject", {}).get("subject_name", "")
+                    dept_name = d.get("department_name") or "CNTT"
+                    views = int(d.get("view_count", 0))
+                    downloads = int(d.get("download_count", 0))
+                    is_pub = bool(d.get("is_public", True))
+                    fname = d.get("file_name") or f"document_{d_id}.pdf"
+                    fsize = f"{round(float(d.get('file_size', 2097152)) / (1024*1024), 1)} MB"
+                    created = str(d.get("created_at") or "")[:16]
+                    f_name = d.get("folder_name") or "Giáo trình & Học liệu"
+                    tags_list = d.get("tags") or ["học liệu", "cntt"]
+                    loaded.append(LecturerDoc(
+                        id=d_id,
+                        title=title,
+                        subject_code=f"SUB_{d.get('subject_id', 1)}",
+                        subject_name=s_name,
+                        faculty=dept_name,
+                        folder_name=f_name,
+                        doc_type="TEXTBOOK",
+                        type_label="Giáo trình",
+                        type_color="blue",
+                        current_version=str(d.get("latest_version") or "v1.0"),
+                        file_name=fname,
+                        file_size=fsize,
+                        downloads=downloads,
+                        views=views,
+                        is_public=is_pub,
+                        permission_summary="Công khai toàn trường" if is_pub else "Nội bộ",
+                        updated_at=created,
+                        description=d.get("description", ""),
+                        tags=tags_list,
+                        versions=[DocVersion("v1.0", fname, "Bản khởi tạo", created, fsize)],
+                        permissions=[DocPermission("p1", "PUBLIC", "Toàn trường", True, True, False)],
+                    ))
+                self.documents = loaded
+                return
+        except Exception:
+            pass
     search_query: str = ""
     selected_subject: str = "ALL"
     selected_type: str = "ALL"
@@ -425,6 +329,26 @@ class LecturerDocState(rx.State):
         self.active_version_doc = doc
         self.new_version_file_name = f"{doc.subject_code}_vUpdate.pdf"
         self.new_version_summary = ""
+        try:
+            import httpx
+            r = httpx.get(f"http://127.0.0.1:8000/api/documents/{doc.id}/versions/", timeout=3.0)
+            if r.status_code == 200:
+                raw_v = r.json().get("versions", [])
+                if raw_v:
+                    doc.versions = [
+                        DocVersion(
+                            id=str(v.get("id", "")),
+                            version=v.get("version_number", "v1.0"),
+                            file_name=v.get("file_name", "document.pdf"),
+                            change_summary=v.get("change_summary", "Bản cập nhật"),
+                            uploaded_at=str(v.get("created_at", ""))[:16],
+                            file_size=f"{round(float(v.get('file_size', 1048576))/(1024*1024), 1)} MB",
+                        )
+                        for v in raw_v
+                    ]
+                    self.active_version_doc = doc
+        except Exception:
+            pass
         self.show_version_modal = True
 
     def close_version_modal(self):
@@ -433,23 +357,55 @@ class LecturerDocState(rx.State):
     def set_version_summary(self, value: str):
         self.new_version_summary = value
 
+    def restore_version(self, ver_id: str):
+        try:
+            import httpx
+            r = httpx.post(
+                f"http://127.0.0.1:8000/api/documents/{self.active_version_doc.id}/versions/{ver_id}/restore/",
+                timeout=5.0,
+            )
+            if r.status_code == 200:
+                self.load_documents()
+                self.show_version_modal = False
+                return rx.toast.success("Đã khôi phục phiên bản thành công! Bản ghi phiên bản mới đã được tạo.")
+            else:
+                return rx.toast.error(f"Khôi phục thất bại: {r.text}")
+        except Exception as e:
+            return rx.toast.error(f"Lỗi kết nối khi khôi phục: {str(e)}")
+
     def upload_new_version(self):
         if not self.new_version_summary.strip():
             return rx.toast.error("Vui lòng nhập tóm tắt nội dung thay đổi phiên bản!")
 
         doc_id = self.active_version_doc.id
+        summary_val = self.new_version_summary.strip()
         time_now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        try:
+            import httpx
+            payload = {
+                "change_summary": summary_val,
+                "file_name": self.new_version_file_name,
+            }
+            r = httpx.post(f"http://127.0.0.1:8000/api/documents/{doc_id}/versions/", json=payload, timeout=5.0)
+            if r.status_code == 201:
+                self.load_documents()
+                self.new_version_summary = ""
+                self.show_version_modal = False
+                return rx.toast.success("Đã xuất bản phiên bản mới vào cơ sở dữ liệu và tự động Indexing!")
+        except Exception:
+            pass
 
         updated = []
         for d in self.documents:
             if d.id == doc_id:
-                # Tăng version
                 cur_v = float(d.current_version.replace("v", ""))
                 new_v_str = f"v{cur_v + 1.0:.1f}"
                 new_ver = DocVersion(
+                    id=str(len(d.versions) + 1),
                     version=new_v_str,
                     file_name=self.new_version_file_name,
-                    change_summary=self.new_version_summary,
+                    change_summary=summary_val,
                     uploaded_at=time_now,
                     file_size="16.2 MB",
                 )
@@ -861,13 +817,25 @@ def version_row(v: DocVersion) -> rx.Component:
                 align="start",
             ),
             rx.spacer(),
-            rx.button(
-                rx.icon("download", size=13),
-                "Tải bản này",
-                size="1",
-                variant="surface",
-                color_scheme="gray",
-                on_click=rx.toast.info(f"Đang tải bản {v.version}: {v.file_name}"),
+            rx.hstack(
+                rx.button(
+                    rx.icon("rotate-ccw", size=13),
+                    "Khôi phục",
+                    size="1",
+                    variant="surface",
+                    color_scheme="indigo",
+                    on_click=LecturerDocState.restore_version(v.id),
+                ),
+                rx.button(
+                    rx.icon("download", size=13),
+                    "Tải bản này",
+                    size="1",
+                    variant="surface",
+                    color_scheme="gray",
+                    on_click=rx.toast.info(f"Đang tải bản {v.version}: {v.file_name}"),
+                ),
+                spacing="2",
+                align="center",
             ),
             align="center",
             width="100%",

@@ -29,6 +29,15 @@ def run_comprehensive_check():
     passed = 0
     total = 0
 
+    def _get_data(res):
+        if hasattr(res, 'data') and res.data is not None:
+            return res.data
+        try:
+            return res.json()
+        except Exception:
+            import json
+            return json.loads(res.content.decode('utf-8'))
+
     # -------------------------------------------------------------
     # 1. KIỂM TRA MÃ NGUỒN FRONTEND: KHÔNG CÒN MOCK DATA
     # -------------------------------------------------------------
@@ -53,13 +62,16 @@ def run_comprehensive_check():
     # -------------------------------------------------------------
     total += 1
     login_admin = client.post('/api/auth/login/', {'username': 'admin', 'password': 'admin123'}, format='json')
-    admin_token = login_admin.data.get('token')
+    admin_data = _get_data(login_admin)
+    admin_token = admin_data.get('token')
 
     login_lecturer = client.post('/api/auth/login/', {'username': 'gv01', 'password': 'gv123'}, format='json')
-    lecturer_token = login_lecturer.data.get('token')
+    lecturer_data = _get_data(login_lecturer)
+    lecturer_token = lecturer_data.get('token')
 
     login_student = client.post('/api/auth/login/', {'username': 'sv01', 'password': 'sv123'}, format='json')
-    student_token = login_student.data.get('token')
+    student_data = _get_data(login_student)
+    student_token = student_data.get('token')
 
     if admin_token and lecturer_token and student_token:
         print("[PASSED] Test 02: Xác thực tài khoản ADMIN, LECTURER, STUDENT từ PostgreSQL thành công.")
@@ -73,8 +85,9 @@ def run_comprehensive_check():
     total += 1
     client.credentials(HTTP_AUTHORIZATION=f'Bearer {student_token}')
     res_docs = client.get('/api/documents/')
-    if res_docs.status_code == 200 and 'documents' in res_docs.data:
-        doc_count = len(res_docs.data['documents'])
+    docs_data = _get_data(res_docs)
+    if res_docs.status_code == 200 and 'documents' in docs_data:
+        doc_count = len(docs_data['documents'])
         print(f"[PASSED] Test 03: API /api/documents/ trả về {doc_count} tài liệu thực tế từ PostgreSQL.")
         passed += 1
     else:
@@ -85,8 +98,9 @@ def run_comprehensive_check():
     # -------------------------------------------------------------
     total += 1
     res_subjs = client.get('/api/subjects/')
-    if res_subjs.status_code == 200 and 'subjects' in res_subjs.data:
-        subj_count = len(res_subjs.data['subjects'])
+    subjs_data = _get_data(res_subjs)
+    if res_subjs.status_code == 200 and 'subjects' in subjs_data:
+        subj_count = len(subjs_data['subjects'])
         print(f"[PASSED] Test 04: API /api/subjects/ trả về {subj_count} môn học thực tế từ bảng subjects.")
         passed += 1
     else:
@@ -98,9 +112,11 @@ def run_comprehensive_check():
     total += 1
     res_depts = client.get('/api/departments/')
     res_classes = client.get('/api/classes/')
+    depts_data = _get_data(res_depts)
+    classes_data = _get_data(res_classes)
     if res_depts.status_code == 200 and res_classes.status_code == 200:
-        dept_count = len(res_depts.data.get('departments', []))
-        class_count = len(res_classes.data.get('classes', []))
+        dept_count = len(depts_data.get('departments', []))
+        class_count = len(classes_data.get('classes', []))
         print(f"[PASSED] Test 05: API Khoa ({dept_count} khoa) & Lớp ({class_count} lớp) lấy từ PostgreSQL.")
         passed += 1
     else:
@@ -113,9 +129,11 @@ def run_comprehensive_check():
     client.credentials(HTTP_AUTHORIZATION=f'Bearer {admin_token}')
     res_users = client.get('/api/users/')
     res_roles = client.get('/api/roles/')
+    users_data = _get_data(res_users)
+    roles_data = _get_data(res_roles)
     if res_users.status_code == 200 and res_roles.status_code == 200:
-        user_count = len(res_users.data.get('users', []))
-        role_count = len(res_roles.data.get('roles', []))
+        user_count = len(users_data.get('users', []))
+        role_count = len(roles_data.get('roles', []))
         print(f"[PASSED] Test 06: Admin quản lý {user_count} người dùng và {role_count} vai trò từ PostgreSQL.")
         passed += 1
     else:
@@ -126,8 +144,9 @@ def run_comprehensive_check():
     # -------------------------------------------------------------
     total += 1
     res_logs = client.get('/api/activity-logs/')
-    if res_logs.status_code == 200 and 'logs' in res_logs.data:
-        log_count = len(res_logs.data['logs'])
+    logs_data = _get_data(res_logs)
+    if res_logs.status_code == 200 and 'logs' in logs_data:
+        log_count = len(logs_data['logs'])
         print(f"[PASSED] Test 07: Lấy {log_count} nhật ký hoạt động từ bảng document_activity_logs.")
         passed += 1
     else:
@@ -138,8 +157,9 @@ def run_comprehensive_check():
     # -------------------------------------------------------------
     total += 1
     res_stats = client.get('/api/dashboard/stats/')
-    if res_stats.status_code == 200 and 'stats' in res_stats.data:
-        stats = res_stats.data['stats']
+    stats_data = _get_data(res_stats)
+    if res_stats.status_code == 200 and 'stats' in stats_data:
+        stats = stats_data['stats']
         print(f"[PASSED] Test 08: Thống kê Dashboard thực tế: {stats['total_documents']} tài liệu, {stats['total_views']} views, {stats['total_downloads']} downloads.")
         passed += 1
     else:
@@ -151,9 +171,11 @@ def run_comprehensive_check():
     total += 1
     res_ai = client.post('/api/ai/query/', {'query': 'Cấu trúc dữ liệu cây nhị phân'}, format='json')
     res_ai_hist = client.get('/api/ai/history/')
+    ai_data = _get_data(res_ai)
+    ai_hist_data = _get_data(res_ai_hist)
     if res_ai.status_code == 200 and res_ai_hist.status_code == 200:
-        ans = res_ai.data.get('answer', '')
-        srcs = len(res_ai.data.get('sources', []))
+        ans = ai_data.get('answer', '')
+        srcs = len(ai_data.get('sources', []))
         print(f"[PASSED] Test 09: Trợ lý AI kết nối tài liệu PostgreSQL: {srcs} nguồn trích dẫn, lưu lịch sử thành công.")
         passed += 1
     else:
@@ -170,7 +192,8 @@ def run_comprehensive_check():
         'subject_id': 1,
         'is_public': True
     }, format='json')
-    new_doc_id = create_res.data.get('document', {}).get('document_id')
+    create_data = _get_data(create_res)
+    new_doc_id = create_data.get('document', {}).get('document_id')
 
     # Chỉnh sửa tài liệu trong database
     patch_res = client.patch(f'/api/documents/{new_doc_id}/', {

@@ -68,22 +68,48 @@ CATEGORY_PIE_DATA = [
     {"name": "Bài tập lớn", "value": 17, "fill": "#a855f7"},
 ]
 
-MOCK_ACTIVITIES = [
-    ActivityItem("a1", "Lê Hoàng Nam", "Sinh viên", "Đã nộp bài đóng góp mới", "Slide Tóm tắt Chương 5: Cây AVL", "IT202", "10 phút trước", "upload", "indigo"),
-    ActivityItem("a2", "Trần Thị Mai", "Sinh viên", "Đã nộp bài đóng góp mới", "50 câu trắc nghiệm Kinh tế vi mô", "ECO101", "25 phút trước", "upload", "indigo"),
-    ActivityItem("a3", "Nguyễn Văn Hùng", "Sinh viên", "Đã tải xuống tài liệu", "Giáo trình CTDL và Giải thuật 2026", "IT202", "1 giờ trước", "download", "green"),
-    ActivityItem("a4", "Phạm Minh Đức", "Sinh viên", "Đã tải xuống tài liệu", "Slide Cơ sở dữ liệu nâng cao", "IT305", "2 giờ trước", "download", "green"),
-    ActivityItem("a5", "TS. Nguyễn Văn An", "Giảng viên", "Đã phê duyệt tài liệu", "Sổ tay Từ vựng Hàng không ICAO", "ENG201", "Hôm qua", "circle-check", "purple"),
-]
-
-
 # ─── State ───────────────────────────────────────────────────────────────────
 
 class LecturerDashboardState(rx.State):
     """Quản lý trạng thái số liệu phân tích và biểu đồ cho giảng viên."""
 
     time_range: str = "7d"  # "7d" hoặc "30d"
-    activities: List[ActivityItem] = MOCK_ACTIVITIES
+    activities: List[ActivityItem] = []
+    total_docs: int = 29
+    total_views: int = 300
+    total_downloads: int = 83
+    pending_count: int = 18
+
+    def load_data(self):
+        try:
+            import httpx
+            resp = httpx.get("http://127.0.0.1:8000/api/dashboard/stats/", timeout=3.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                stats = data.get("stats") or data.get("data") or {}
+                self.total_docs = stats.get("total_documents", 29)
+                self.total_views = stats.get("total_views", 300)
+                self.total_downloads = stats.get("total_downloads", 83)
+                self.pending_count = stats.get("pending_documents", 18)
+                
+                raw_acts = data.get("recent_activities") or []
+                loaded_acts = []
+                for act in raw_acts:
+                    loaded_acts.append(ActivityItem(
+                        id=str(act.get("log_id", "")),
+                        user_name=act.get("user_name", "Người dùng"),
+                        user_role=act.get("user_role", "Sinh viên"),
+                        action=act.get("action", "Hoạt động"),
+                        target_title=act.get("document_title", ""),
+                        subject_code="DocUni",
+                        timestamp=act.get("created_at", "Gần đây"),
+                        icon="file-text",
+                        color="blue",
+                    ))
+                self.activities = loaded_acts
+                return
+        except Exception:
+            pass
 
     def set_time_range(self, value: str | list[str]):
         if isinstance(value, list):

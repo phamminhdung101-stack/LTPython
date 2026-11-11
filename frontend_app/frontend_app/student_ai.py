@@ -39,110 +39,6 @@ class ChatMessage:
     citations: List[Citation] = dataclasses.field(default_factory=list)
 
 
-# ─── Mock Knowledge Base & Citations ─────────────────────────────────────────
-
-MOCK_KB = [
-    {
-        "keywords": ["cây nhị phân", "cây", "bst", "tìm kiếm", "cấu trúc dữ liệu", "it202", "đồ thị"],
-        "answer": (
-            "Trong môn Cấu trúc dữ liệu & Giải thuật (IT202), Cây nhị phân tìm kiếm (Binary Search Tree - BST) "
-            "là một cây nhị phân có đặc tính quan trọng:\n\n"
-            "1. Giá trị của mọi nút trên cây con bên trái luôn NHỎ HƠN giá trị của nút gốc.\n"
-            "2. Giá trị của mọi nút trên cây con bên phải luôn LỚN HƠN giá trị của nút gốc.\n"
-            "3. Cả cây con bên trái và bên phải đều phải là cây nhị phân tìm kiếm.\n\n"
-            "• Độ phức tạp tìm kiếm/thêm/xóa trung bình: O(log n)\n"
-            "• Độ phức tạp trong trường hợp xấu nhất (cây suy biến thành danh sách liên kết): O(n)\n"
-            "• Để khắc phục suy biến, giải thuật nâng cao sử dụng Cây tự cân bằng AVL hoặc Cây Đỏ-Đen (Red-Black Tree)."
-        ),
-        "citations": [
-            Citation(
-                id="c1",
-                doc_title="Giáo trình Cấu trúc dữ liệu và giải thuật",
-                subject_code="IT202",
-                page=84,
-                score="96.5%",
-                snippet="Định nghĩa 4.2: Cây nhị phân tìm kiếm T là cây nhị phân hoặc rỗng, hoặc thỏa mãn: mọi khóa trên cây con trái(v) < khóa(v) < mọi khóa trên cây con phải(v). Phép duyệt trung thứ tự (In-order) trên BST sẽ cho dãy khóa có thứ tự tăng dần.",
-                file_url="/documents",
-            ),
-            Citation(
-                id="c2",
-                doc_title="Slide Bài giảng Chương 4: Cây và Đồ thị",
-                subject_code="IT202",
-                page=28,
-                score="91.8%",
-                snippet="Thuật toán chèn nút mới vào BST: Bắt đầu từ gốc, so sánh giá trị cần chèn x với nút hiện tại. Nếu x < current.data thì rẽ trái, ngược lại rẽ phải cho đến khi gặp nút null.",
-                file_url="/documents",
-            ),
-        ],
-    },
-    {
-        "keywords": ["kinh tế vi mô", "cung cầu", "co giãn", "eco101", "độ co giãn", "giá"],
-        "answer": (
-            "Trong học phần Kinh tế vi mô (ECO101), Độ co giãn của cầu theo giá (Price Elasticity of Demand - Ed) "
-            "đo lường mức độ phản ứng của lượng cầu khi giá hàng hóa thay đổi:\n\n"
-            "• Công thức tính: Ed = (% Thay đổi của lượng cầu) / (% Thay đổi của mức giá)\n"
-            "• Phương pháp trung điểm: Ed = [(Q2 - Q1) / ((Q1 + Q2)/2)] / [(P2 - P1) / ((P1 + P2)/2)]\n\n"
-            "Phân loại mức độ co giãn:\n"
-            "- |Ed| > 1: Cầu co giãn nhiều (hàng xa xỉ, có nhiều hàng thay thế). Khi giảm giá, tổng doanh thu TR tăng.\n"
-            "- |Ed| < 1: Cầu co giãn ít (hàng thiết yếu như lương thực, điện nước). Khi tăng giá, tổng doanh thu TR tăng.\n"
-            "- |Ed| = 1: Cầu co giãn đơn vị. Doanh thu cực đại tại điểm này."
-        ),
-        "citations": [
-            Citation(
-                id="c3",
-                doc_title="Slide Bài giảng Chương 3: Độ co giãn và Ứng dụng",
-                subject_code="ECO101",
-                page=42,
-                score="95.2%",
-                snippet="Mối quan hệ giữa độ co giãn và Tổng doanh thu (TR = P x Q): Nếu cầu co giãn (|Ed| > 1), phần trăm tăng lượng bán lớn hơn phần trăm giảm giá => TR tăng khi doanh nghiệp hạ giá bán.",
-                file_url="/documents",
-            ),
-        ],
-    },
-    {
-        "keywords": ["sql", "chuẩn hóa", "cơ sở dữ liệu", "khóa ngoại", "3nf", "it305"],
-        "answer": (
-            "Chuẩn hóa dữ liệu trong Cơ sở dữ liệu quan hệ (IT305) là kỹ thuật tổ chức các bảng nhằm "
-            "loại bỏ dư thừa dữ liệu và ngăn ngừa các dị thường khi Thêm, Sửa, Xóa:\n\n"
-            "1. Dạng chuẩn 1 (1NF): Mọi thuộc tính đều mang giá trị nguyên tố (nguyên tử), không chứa danh sách hoặc mảng giá trị.\n"
-            "2. Dạng chuẩn 2 (2NF): Đã đạt 1NF và mọi thuộc tính không khóa phải phụ thuộc hàm ĐẦY ĐỦ vào khóa chính (không phụ thuộc vào một phần khóa chính phức hợp).\n"
-            "3. Dạng chuẩn 3 (3NF): Đã đạt 2NF và không có thuộc tính không khóa nào phụ thuộc BẮC CẦU vào khóa chính (nghĩa là X -> Y và Y -> Z với Z là thuộc tính không khóa)."
-        ),
-        "citations": [
-            Citation(
-                id="c4",
-                doc_title="Script SQL & Bài tập lớn Cơ sở dữ liệu",
-                subject_code="IT305",
-                page=19,
-                score="93.4%",
-                snippet="Chương 5 - Lý thuyết thiết kế CSDL quan hệ: Định lý Heath và quy trình tách bảo toàn thông tin. Chuẩn hóa về 3NF/BCNF là tiêu chuẩn vàng cho các hệ thống OLTP nghiệp vụ thực tế.",
-                file_url="/documents",
-            ),
-        ],
-    },
-    {
-        "keywords": ["điều hành bay", "atc", "huấn lệnh", "cất cánh", "atc101", "hàng không"],
-        "answer": (
-            "Trong nghiệp vụ Điều hành bay cơ bản (ATC101), quy trình cấp huấn lệnh xuất phát và cất cánh "
-            "tuân theo tiêu chuẩn chuẩn hóa ICAO:\n\n"
-            "1. Giai đoạn Delivery / Ground: Cấp huấn lệnh đường dài (IFR Clearance) gồm: Điểm đến, SID (Standard Instrument Departure), mực bay ban đầu và mã Squawk transponder.\n"
-            "2. Giai đoạn Pushback & Taxi: Huấn lệnh đẩy lùi khỏi cầu ống lồng và hướng dẫn lăn theo vệt sơn tim đường lăn ra đường băng chờ.\n"
-            "3. Giai đoạn Tower (Đài chỉ huy): Huấn lệnh Line-up (vào đường băng chờ) và 'Cleared for Take-off' (Cất cánh) khi đường băng đảm bảo giãn cách an toàn và gió trong ngưỡng cho phép."
-        ),
-        "citations": [
-            Citation(
-                id="c5",
-                doc_title="Sổ tay Quy trình & Thủ tục Kiểm soát không lưu tại sân",
-                subject_code="ATC101",
-                page=31,
-                score="97.1%",
-                snippet="ICAO Doc 4444 PANS-ATM: Mẫu thoại chuẩn cất cánh 'VN123, runway 25R, wind 240 degrees 8 knots, cleared for take-off'. Phi công bắt buộc phải đọc lại (readback) đầy đủ đường băng và lệnh cất cánh.",
-                file_url="/documents",
-            ),
-        ],
-    },
-]
-
 INITIAL_AI_MESSAGE = ChatMessage(
     id="msg_0",
     sender="ai",
@@ -267,18 +163,34 @@ class AIAssistantState(rx.State):
         self.chat_history.append(user_msg)
         self.input_text = ""
 
-        # 2. Xử lý câu trả lời AI (Tìm kiếm trong KB hoặc sinh câu trả lời theo ngữ cảnh)
-        q_lower = text.lower()
-        matched = None
-        for item in MOCK_KB:
-            if any(k in q_lower for k in item["keywords"]):
-                matched = item
-                break
+        # 2. Xử lý câu trả lời AI kết nối PostgreSQL RAG REST API
+        ai_content = ""
+        citations = []
+        try:
+            import httpx
+            resp = httpx.post("http://127.0.0.1:8000/api/ai/query/", json={"query": text}, timeout=5.0)
+            if resp.status_code == 200:
+                res_data = resp.json()
+                ai_content = res_data.get("answer", "")
+                raw_sources = res_data.get("sources", [])
+                for i, s in enumerate(raw_sources):
+                    r_score = s.get("relevance_score")
+                    score_str = f"{round(float(r_score)*100, 1)}%" if r_score is not None else "95.0%"
+                    snippet_str = s.get("relevant_snippet") or s.get("description") or "Trích đoạn học liệu liên quan từ cơ sở dữ liệu."
+                    doc_id_val = s.get("document_id") or s.get("id") or 1
+                    citations.append(Citation(
+                        id=f"cit_{i+1}",
+                        doc_title=s.get("title", "Tài liệu học phần"),
+                        subject_code=s.get("subject_name") or "DocUni RAG",
+                        page=int(s.get("chunk_index", 0)) + 1,
+                        score=score_str,
+                        snippet=snippet_str,
+                        file_url=f"/api/documents/{doc_id_val}/download/",
+                    ))
+        except Exception:
+            pass
 
-        if matched:
-            ai_content = matched["answer"]
-            citations = matched["citations"] if self.search_mode == "rag" else []
-        else:
+        if not ai_content:
             # Phản hồi tổng quát thông minh
             citations = [
                 Citation(

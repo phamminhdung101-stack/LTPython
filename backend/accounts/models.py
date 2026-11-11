@@ -94,6 +94,10 @@ class User(AbstractBaseUser, PermissionsMixin):
         return f'{self.full_name} (@{self.username})'
 
     @property
+    def user_id(self):
+        return self.id
+
+    @property
     def role_name(self):
         return self.role.role_name if self.role else None
 

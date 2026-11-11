@@ -17,116 +17,6 @@ from typing import List, Optional
 from .common_components import student_page_wrapper, kpi_card, status_badge
 from .data_store import GlobalDocState
 
-# ─── Dữ liệu Mock theo database/schema.sql ───────────────────────────────────
-
-MOCK_CONTRIBUTIONS = [
-    {
-        "id": "doc_001",
-        "title": "Slide Bài giảng CTDL - Chương 3: Hàng đợi và Ngăn xếp",
-        "subject_code": "IT202",
-        "subject_name": "Cấu trúc dữ liệu & giải thuật",
-        "folder": "Slide bài giảng",
-        "doc_type": "SLIDE",
-        "type_label": "Slide Bài giảng",
-        "status": "APPROVED",
-        "submitted_at": "2026-10-05 09:30",
-        "reviewed_at": "2026-10-06 14:15",
-        "reviewer": "TS. Nguyễn Văn An",
-        "reject_reason": "",
-        "version": "1.0",
-        "filename": "CTDL_C3_HangDoi_NganXep.pdf",
-        "file_size": "2.4 MB",
-        "view_count": 142,
-        "download_count": 67,
-        "tags": ["python", "cấu trúc dữ liệu", "bài tập"],
-        "is_public": True,
-    },
-    {
-        "id": "doc_002",
-        "title": "Đề cương ôn tập Cơ sở dữ liệu cuối kỳ 2026",
-        "subject_code": "IT305",
-        "subject_name": "Cơ sở dữ liệu",
-        "folder": "Đề thi & Đáp án",
-        "doc_type": "EXAM",
-        "type_label": "Đề thi / Đáp án",
-        "status": "PENDING",
-        "submitted_at": "2026-10-08 15:22",
-        "reviewed_at": "",
-        "reviewer": "",
-        "reject_reason": "",
-        "version": "1.0",
-        "filename": "CSDL_DeOThiCuoiKy_2026.pdf",
-        "file_size": "1.8 MB",
-        "view_count": 0,
-        "download_count": 0,
-        "tags": ["sql", "csdl", "cuối kỳ"],
-        "is_public": True,
-    },
-    {
-        "id": "doc_003",
-        "title": "Bài tập thực hành SQL nâng cao - Lab 5 & 6",
-        "subject_code": "IT305",
-        "subject_name": "Cơ sở dữ liệu",
-        "folder": "Script SQL",
-        "doc_type": "EXERCISE",
-        "type_label": "Bài tập thực hành",
-        "status": "REJECTED",
-        "submitted_at": "2026-10-03 11:10",
-        "reviewed_at": "2026-10-04 08:45",
-        "reviewer": "TS. Nguyễn Văn An",
-        "reject_reason": "Tài liệu bị trùng với bộ Lab đã có trong hệ thống (Tham khảo thư mục Script SQL). Bạn có thể bổ sung nội dung mới và nộp lại phiên bản v2.0 với ghi chú cụ thể về điểm khác biệt.",
-        "version": "1.0",
-        "filename": "SQL_Lab5_Lab6_NangCao.zip",
-        "file_size": "3.1 MB",
-        "view_count": 0,
-        "download_count": 0,
-        "tags": ["sql", "thực hành", "lab"],
-        "is_public": True,
-    },
-    {
-        "id": "doc_004",
-        "title": "Tóm tắt lý thuyết Nhập môn lập trình - Ôn thi giữa kỳ",
-        "subject_code": "IT101",
-        "subject_name": "Nhập môn lập trình",
-        "folder": "Bài tập thực hành",
-        "doc_type": "REFERENCE",
-        "type_label": "Tài liệu tham khảo",
-        "status": "APPROVED",
-        "submitted_at": "2026-09-20 14:05",
-        "reviewed_at": "2026-09-21 10:30",
-        "reviewer": "TS. Lê Thị Hương",
-        "reject_reason": "",
-        "version": "2.0",
-        "filename": "IT101_TomTatLyThuyet_GiuaKy.pdf",
-        "file_size": "0.9 MB",
-        "view_count": 389,
-        "download_count": 215,
-        "tags": ["python", "giữa kỳ", "lý thuyết"],
-        "is_public": True,
-    },
-    {
-        "id": "doc_005",
-        "title": "Slide Bài giảng Lập trình Web - HTML/CSS Cơ bản",
-        "subject_code": "IT410",
-        "subject_name": "Lập trình Web",
-        "folder": "HTML/CSS/JS",
-        "doc_type": "SLIDE",
-        "type_label": "Slide Bài giảng",
-        "status": "PENDING",
-        "submitted_at": "2026-10-09 08:15",
-        "reviewed_at": "",
-        "reviewer": "",
-        "reject_reason": "",
-        "version": "1.0",
-        "filename": "Web_HTMLCSS_Slide_C1.pptx",
-        "file_size": "5.2 MB",
-        "view_count": 0,
-        "download_count": 0,
-        "tags": ["html", "css", "web"],
-        "is_public": False,
-    },
-]
-
 DOC_TYPE_ICONS = {
     "SLIDE": "presentation",
     "TEXTBOOK": "book",
@@ -150,7 +40,48 @@ DOC_TYPE_COLORS = {
 class ContributionState(rx.State):
     """Quản lý toàn bộ logic trang Theo dõi trạng thái duyệt."""
 
-    contributions: List[dict] = MOCK_CONTRIBUTIONS
+    contributions: List[dict] = []
+
+    def load_contributions(self):
+        try:
+            import httpx
+            resp = httpx.get("http://127.0.0.1:8000/api/documents/", timeout=3.0)
+            if resp.status_code == 200:
+                raw_docs = resp.json().get("documents") or resp.json().get("data") or []
+                loaded = []
+                for d in raw_docs:
+                    d_id = str(d.get("id") or d.get("document_id"))
+                    title = d.get("title", "")
+                    s_name = d.get("subject_name") or d.get("subject", {}).get("subject_name", "")
+                    status = str(d.get("status") or "PENDING").upper()
+                    created = str(d.get("created_at") or "")[:16]
+                    fname = d.get("file_name") or f"document_{d_id}.pdf"
+                    fsize = f"{round(float(d.get('file_size', 2097152)) / (1024*1024), 1)} MB"
+                    loaded.append({
+                        "id": d_id,
+                        "title": title,
+                        "subject_code": f"SUB_{d.get('subject_id', 1)}",
+                        "subject_name": s_name,
+                        "folder": "Kho tài liệu",
+                        "doc_type": "TEXTBOOK",
+                        "type_label": "Giáo trình",
+                        "status": status,
+                        "submitted_at": created,
+                        "reviewed_at": created if status == "APPROVED" else "",
+                        "reviewer": d.get("uploader_name", "Giảng viên"),
+                        "reject_reason": "",
+                        "version": str(d.get("latest_version") or "1.0"),
+                        "filename": fname,
+                        "file_size": fsize,
+                        "view_count": int(d.get("view_count", 0)),
+                        "download_count": int(d.get("download_count", 0)),
+                        "tags": ["học liệu"],
+                        "is_public": bool(d.get("is_public", True)),
+                    })
+                self.contributions = loaded
+                return
+        except Exception:
+            pass
     active_tab: str = "ALL"
 
     # Detail / Reject dialog

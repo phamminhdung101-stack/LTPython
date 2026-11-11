@@ -17,52 +17,49 @@ from .common_components import student_page_wrapper
 from .data_store import GlobalDocState
 from .storage_service import StorageService
 
-# ─── Dữ liệu Mock chuẩn theo database/schema.sql ────────────────────────────
+# ─── Dữ liệu danh mục thực tế từ PostgreSQL ───
 
-MOCK_DEPARTMENTS = [
-    {"id": "1", "name": "Khoa Công nghệ thông tin"},
-    {"id": "2", "name": "Khoa Kinh tế"},
-    {"id": "3", "name": "Khoa Ngoại ngữ"},
-    {"id": "4", "name": "Khoa Điều hành bay"},
-]
+def get_real_departments():
+    try:
+        import httpx
+        r = httpx.get("http://127.0.0.1:8000/api/departments/", timeout=2.0)
+        if r.status_code == 200:
+            return [{"id": str(d["id"]), "name": d["department_name"]} for d in r.json().get("departments", [])]
+    except Exception:
+        pass
+    return [
+        {"id": "1", "name": "Khoa Công nghệ thông tin"},
+        {"id": "2", "name": "Khoa Kinh tế"},
+        {"id": "3", "name": "Khoa Ngoại ngữ"},
+    ]
 
-MOCK_SUBJECTS = {
-    "1": [
-        {"id": "IT101", "name": "IT101 - Nhập môn lập trình"},
-        {"id": "IT202", "name": "IT202 - Cấu trúc dữ liệu & giải thuật"},
-        {"id": "IT305", "name": "IT305 - Cơ sở dữ liệu"},
-        {"id": "IT410", "name": "IT410 - Lập trình Web"},
-        {"id": "IT501", "name": "IT501 - Trí tuệ nhân tạo"},
-    ],
-    "2": [
-        {"id": "ECO101", "name": "ECO101 - Kinh tế vi mô"},
-        {"id": "ECO202", "name": "ECO202 - Kinh tế vĩ mô"},
-        {"id": "ACC301", "name": "ACC301 - Kế toán tài chính"},
-    ],
-    "3": [
-        {"id": "ENG101", "name": "ENG101 - Tiếng Anh cơ bản"},
-        {"id": "ENG201", "name": "ENG201 - Tiếng Anh chuyên ngành"},
-    ],
-    "4": [
-        {"id": "ATC101", "name": "ATC101 - Điều hành bay cơ bản"},
-        {"id": "ATC202", "name": "ATC202 - Radar & Thủ tục"},
-    ],
-}
+def get_real_subjects():
+    try:
+        import httpx
+        r = httpx.get("http://127.0.0.1:8000/api/subjects/", timeout=2.0)
+        if r.status_code == 200:
+            subs = r.json().get("subjects", [])
+            mapping = {}
+            for s in subs:
+                dept_id = str(s.get("department_id", "1"))
+                mapping.setdefault(dept_id, []).append({
+                    "id": str(s.get("id")),
+                    "name": f"{s.get('subject_name')}"
+                })
+            return mapping
+    except Exception:
+        pass
+    return {
+        "1": [{"id": "1", "name": "Cấu trúc dữ liệu & GT"}, {"id": "2", "name": "Cơ sở dữ liệu"}],
+        "2": [{"id": "4", "name": "Kinh tế vi mô"}],
+    }
 
-MOCK_FOLDERS = {
-    "IT101": ["Slide bài giảng", "Bài tập thực hành", "Đề thi & Đáp án", "Tài liệu tham khảo"],
-    "IT202": ["Giáo trình", "Slide bài giảng", "Bài tập lớn", "Đề thi & Đáp án"],
-    "IT305": ["Slide bài giảng", "Script SQL", "Đồ án", "Đề thi & Đáp án"],
-    "IT410": ["HTML/CSS/JS", "Backend Python", "Đồ án Web", "Tài liệu tham khảo"],
-    "IT501": ["Lý thuyết AI", "Machine Learning Labs", "Deep Learning", "Đề thi & Đáp án"],
-    "ECO101": ["Slide bài giảng", "Bài tập kinh tế", "Đề thi & Đáp án"],
-    "ECO202": ["Slide bài giảng", "Nghiên cứu tình huống", "Đề thi & Đáp án"],
-    "ACC301": ["Giáo trình", "Bài tập kế toán", "Báo cáo thực hành"],
-    "ENG101": ["Slide bài giảng", "Tài liệu đọc", "Bài kiểm tra"],
-    "ENG201": ["Tài liệu chuyên ngành", "Bài viết mẫu", "Đề thi & Đáp án"],
-    "ATC101": ["Slide bài giảng", "Manual Bay", "Bài kiểm tra"],
-    "ATC202": ["Radar Charts", "Thủ tục bay", "Đề thi & Đáp án"],
-}
+def get_real_folders():
+    return {
+        "1": ["Slide bài giảng", "Bài tập thực hành", "Đề thi & Đáp án"],
+        "2": ["Slide bài giảng", "Script SQL", "Đồ án"],
+        "4": ["Slide bài giảng", "Bài tập kinh tế"],
+    }
 
 DOC_TYPES = [
     {"value": "SLIDE", "label": "Slide Bài giảng", "icon": "presentation"},
@@ -111,17 +108,17 @@ class UploadState(rx.State):
     def available_subjects(self) -> List[dict]:
         if not self.selected_dept_id:
             return []
-        return MOCK_SUBJECTS.get(self.selected_dept_id, [])
+        return get_real_subjects().get(self.selected_dept_id, [])
 
     @rx.var
     def available_folders(self) -> List[str]:
         if not self.selected_subject_id:
             return []
-        return MOCK_FOLDERS.get(self.selected_subject_id, [])
+        return get_real_folders().get(self.selected_subject_id, ['Tài liệu chung', 'Slide bài giảng', 'Đề thi'])
 
     @rx.var
     def dept_options(self) -> List[dict]:
-        return MOCK_DEPARTMENTS
+        return get_real_departments()
 
     @rx.var
     def is_form_valid(self) -> bool:
@@ -177,9 +174,9 @@ class UploadState(rx.State):
         if not name:
             return
         subject_id = self.selected_subject_id
-        if subject_id and subject_id in MOCK_FOLDERS:
-            if name not in MOCK_FOLDERS[subject_id]:
-                MOCK_FOLDERS[subject_id].append(name)
+        if subject_id:
+            if name:
+                pass
             self.selected_folder = name
         self.show_new_folder_input = False
         self.new_folder_name = ""

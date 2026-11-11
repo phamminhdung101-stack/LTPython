@@ -25,14 +25,18 @@ def _json_error(message: str, status: int = 400, errors=None) -> JsonResponse:
     payload = {'status': 'error', 'message': message}
     if errors:
         payload['errors'] = errors
-    return JsonResponse(payload, status=status, json_dumps_params={'ensure_ascii': False})
+    res = JsonResponse(payload, status=status, json_dumps_params={'ensure_ascii': False})
+    res.data = payload
+    return res
 
 
 def _json_ok(data=None, message: str = 'Thành công', status: int = 200) -> JsonResponse:
     payload = {'status': 'ok', 'message': message}
     if data is not None:
         payload['data'] = data
-    return JsonResponse(payload, status=status, json_dumps_params={'ensure_ascii': False})
+    res = JsonResponse(payload, status=status, json_dumps_params={'ensure_ascii': False})
+    res.data = payload
+    return res
 
 
 # ─── DEPARTMENTS API ─────────────────────────────────────────────────────────
@@ -47,11 +51,17 @@ def department_api(request):
         ).order_by('department_name')
         data = [{
             'id': d.id,
+            'department_id': d.id,
             'department_name': d.department_name,
             'class_count': d.class_count,
             'subject_count': d.subject_count,
         } for d in depts]
-        return _json_ok(data)
+        return JsonResponse({
+            'status': 'ok',
+            'departments': data,
+            'data': data,
+            'total': len(data),
+        }, status=200, json_dumps_params={'ensure_ascii': False})
 
     # POST: Tạo khoa mới (Admin only)
     if not (request.user.is_authenticated and getattr(request.user, 'is_admin', False)):
@@ -88,12 +98,22 @@ def class_api(request):
 
         data = [{
             'id': c.id,
+            'class_id': c.id,
             'class_name': c.class_name,
             'department_id': c.department_id,
-            'department_name': c.department.department_name,
+            'department_name': c.department.department_name if c.department else '',
+            'department': {
+                'department_id': c.department_id,
+                'department_name': c.department.department_name if c.department else '',
+            } if c.department else {},
             'is_locked': c.is_locked,
         } for c in qs]
-        return _json_ok(data)
+        return JsonResponse({
+            'status': 'ok',
+            'classes': data,
+            'data': data,
+            'total': len(data),
+        }, status=200, json_dumps_params={'ensure_ascii': False})
 
     # POST: Tạo lớp mới (Admin only)
     if not (request.user.is_authenticated and getattr(request.user, 'is_admin', False)):
@@ -164,11 +184,21 @@ def subject_api(request):
 
         data = [{
             'id': s.id,
+            'subject_id': s.id,
             'subject_name': s.subject_name,
             'department_id': s.department_id,
-            'department_name': s.department.department_name,
+            'department_name': s.department.department_name if s.department else '',
+            'department': {
+                'department_id': s.department_id,
+                'department_name': s.department.department_name if s.department else '',
+            } if s.department else {},
         } for s in qs]
-        return _json_ok(data)
+        return JsonResponse({
+            'status': 'ok',
+            'subjects': data,
+            'data': data,
+            'total': len(data),
+        }, status=200, json_dumps_params={'ensure_ascii': False})
 
     # POST: Tạo môn học mới
     if not (request.user.is_authenticated and getattr(request.user, 'is_admin', False)):
@@ -219,10 +249,61 @@ def folder_tree_api(request, subject_id):
 
 
 @csrf_exempt
-@require_http_methods(["POST"])
-def folder_create_api(request):
-    """Tạo thư mục hoặc thư mục con mới."""
-    user = request.user if request.user.is_authenticated else None
+@require_http_methods(["GET", "POST"])
+def folder_api(request):
+    """
+    API Quản lý Thư mục:
+    - GET: Danh sách thư mục (hỗ trợ lọc theo subject_id, parent_id, tìm kiếm)
+    - POST: Tạo thư mục mới (Admin / Giảng viên)
+    """
+    if request.method == "GET":
+        qs = Folder.objects.select_related('subject', 'parent_folder').annotate(
+            doc_count=Count('documents')
+        ).order_by('folder_name')
+
+        subject_id = request.GET.get('subject_id')
+        if subject_id:
+            qs = qs.filter(subject_id=subject_id)
+
+        parent_id = request.GET.get('parent_id')
+        if parent_id:
+            if str(parent_id).lower() in ('root', 'null', 'none', '0'):
+                qs = qs.filter(parent_folder__isnull=True)
+            else:
+                qs = qs.filter(parent_folder_id=parent_id)
+
+        q = request.GET.get('q', '').strip()
+        if q:
+            qs = qs.filter(folder_name__icontains=q)
+
+        data = [{
+            'id': f.id,
+            'folder_id': f.id,
+            'folder_name': f.folder_name,
+            'subject_id': f.subject_id,
+            'subject_name': f.subject.subject_name if f.subject else '',
+            'parent_folder_id': f.parent_folder_id,
+            'parent_folder_name': f.parent_folder.folder_name if f.parent_folder else None,
+            'doc_count': f.doc_count,
+            'breadcrumb': f.breadcrumb,
+            'created_at': f.created_at.strftime('%Y-%m-%d %H:%M') if f.created_at else '',
+        } for f in qs]
+
+        payload = {
+            'status': 'ok',
+            'folders': data,
+            'data': data,
+            'total': len(data),
+        }
+        res = JsonResponse(payload, status=200, json_dumps_params={'ensure_ascii': False})
+        res.data = payload
+        return res
+
+    # POST: Tạo thư mục hoặc thư mục con
+    user = request.user
+    if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
+        return _json_error("Chỉ Quản trị viên hoặc Giảng viên mới có quyền tạo thư mục.", 403)
+
     name = request.POST.get('folder_name', '').strip()
     subject_id = request.POST.get('subject_id')
     parent_id = request.POST.get('parent_folder_id')
@@ -248,7 +329,146 @@ def folder_create_api(request):
 
     return _json_ok({
         'id': folder.id,
+        'folder_id': folder.id,
         'folder_name': folder.folder_name,
         'subject_id': folder.subject_id,
         'parent_folder_id': folder.parent_folder_id,
+        'breadcrumb': folder.breadcrumb,
     }, message=f"Đã tạo thư mục '{folder.folder_name}'.", status=201)
+
+
+folder_create_api = folder_api
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PATCH", "DELETE"])
+def folder_detail_api(request, pk):
+    """
+    API Chi tiết, Sửa hoặc Xóa thư mục:
+    - GET: Chi tiết thư mục, đường dẫn breadcrumb, thư mục con và tài liệu bên trong
+    - PATCH: Đổi tên thư mục, di chuyển thư mục cha (kiểm tra chống vòng lặp)
+    - DELETE: Xóa thư mục an toàn (bảo toàn tài liệu, chuyển về thư mục gốc)
+    """
+    folder = get_object_or_404(
+        Folder.objects.select_related('subject', 'parent_folder'),
+        pk=pk
+    )
+    user = request.user
+
+    if request.method == "GET":
+        docs = folder.documents.select_related('uploader', 'subject')
+        docs_data = [{
+            'document_id': d.id,
+            'id': d.id,
+            'title': d.title,
+            'status': d.status,
+            'is_public': d.is_public,
+            'view_count': d.view_count,
+            'download_count': d.download_count,
+            'uploader_name': d.uploader.full_name if (d.uploader and d.uploader.full_name) else (d.uploader.username if d.uploader else 'Ẩn danh'),
+            'created_at': d.created_at.strftime('%Y-%m-%d %H:%M') if d.created_at else '',
+        } for d in docs]
+
+        subfolders = folder.subfolders.annotate(doc_count=Count('documents'))
+        subfolders_data = [{
+            'id': sf.id,
+            'folder_id': sf.id,
+            'folder_name': sf.folder_name,
+            'doc_count': sf.doc_count,
+        } for sf in subfolders]
+
+        return _json_ok({
+            'folder_id': folder.id,
+            'id': folder.id,
+            'folder_name': folder.folder_name,
+            'subject_id': folder.subject_id,
+            'subject_name': folder.subject.subject_name if folder.subject else '',
+            'parent_folder_id': folder.parent_folder_id,
+            'parent_folder_name': folder.parent_folder.folder_name if folder.parent_folder else None,
+            'doc_count': folder.documents.count(),
+            'breadcrumb': folder.breadcrumb,
+            'subfolders': subfolders_data,
+            'documents': docs_data,
+        })
+
+    # Quyền sửa / xóa: Yêu cầu Admin hoặc Giảng viên
+    if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
+        return _json_error("Chỉ Quản trị viên hoặc Giảng viên mới có quyền chỉnh sửa/xóa thư mục.", 403)
+
+    if request.method == "PATCH":
+        data = {}
+        if request.body:
+            try:
+                data = json.loads(request.body.decode('utf-8'))
+            except Exception:
+                pass
+        if not data:
+            data = request.POST
+
+        new_name = data.get('folder_name', '').strip()
+        new_parent_id = data.get('parent_folder_id')
+
+        if new_name:
+            folder.folder_name = new_name
+
+        if new_parent_id is not None:
+            if str(new_parent_id).lower() in ('null', 'none', '', '0'):
+                folder.parent_folder = None
+            else:
+                new_parent_id = int(new_parent_id)
+                if new_parent_id == folder.id:
+                    return _json_error("Không thể đặt thư mục làm thư mục cha của chính nó.", 400)
+                # Chống tạo vòng lặp cây thư mục
+                curr = Folder.objects.filter(pk=new_parent_id).first()
+                while curr:
+                    if curr.id == folder.id:
+                        return _json_error("Không thể tạo vòng lặp thư mục phân cấp.", 400)
+                    curr = curr.parent_folder
+                folder.parent_folder_id = new_parent_id
+
+        folder.save()
+        return _json_ok({
+            'folder_id': folder.id,
+            'folder_name': folder.folder_name,
+            'subject_id': folder.subject_id,
+            'parent_folder_id': folder.parent_folder_id,
+            'breadcrumb': folder.breadcrumb,
+        }, message=f"Đã cập nhật thư mục '{folder.folder_name}'.")
+
+    if request.method == "DELETE":
+        folder_name = folder.folder_name
+        folder_id = folder.id
+        # Bảo toàn tài liệu: chuyển tài liệu trong thư mục này về thư mục gốc (folder=None)
+        folder.documents.all().update(folder=None)
+        folder.delete()
+        return _json_ok(
+            data={'deleted_folder_id': folder_id},
+            message=f"Đã xóa thư mục '{folder_name}'. Toàn bộ tài liệu bên trong đã được bảo toàn an toàn."
+        )
+
+
+@require_http_methods(["GET"])
+def folder_documents_api(request, pk):
+    """Lấy danh sách tài liệu thuộc thư mục cụ thể."""
+    folder = get_object_or_404(Folder, pk=pk)
+    docs = folder.documents.select_related('uploader', 'subject')
+    data = [{
+        'document_id': d.id,
+        'id': d.id,
+        'title': d.title,
+        'description': d.description,
+        'status': d.status,
+        'is_public': d.is_public,
+        'view_count': d.view_count,
+        'download_count': d.download_count,
+        'uploader_name': d.uploader.full_name if (d.uploader and d.uploader.full_name) else (d.uploader.username if d.uploader else 'Ẩn danh'),
+        'created_at': d.created_at.strftime('%Y-%m-%d %H:%M') if d.created_at else '',
+    } for d in docs]
+
+    return _json_ok({
+        'folder_id': folder.id,
+        'folder_name': folder.folder_name,
+        'breadcrumb': folder.breadcrumb,
+        'documents': data,
+        'total': len(data),
+    })

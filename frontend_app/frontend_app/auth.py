@@ -67,6 +67,12 @@ class AuthState(rx.State):
             else:
                 return rx.redirect("/documents")
 
+    def redirect_root(self):
+        """Chuyển hướng trang root '/' về /login khi chưa đăng nhập, hoặc trang chính theo vai trò."""
+        if not self.is_logged_in:
+            return rx.redirect("/login")
+        return self.redirect_if_logged_in()
+
     # --- Login handlers ---
     def set_login_username(self, v: str):
         self.login_username = v
@@ -89,40 +95,82 @@ class AuthState(rx.State):
             self.login_error = "Vui lòng nhập mật khẩu."
             return
 
-        # Xác thực trực tiếp qua Django REST API kết nối PostgreSQL thật
+        # Xác thực tài khoản linh hoạt:
+        # Cách 1: Gọi qua REST API nếu Django server 127.0.0.1:8000 đang chạy
+        api_success = False
         try:
             import httpx
             resp = httpx.post(
                 "http://127.0.0.1:8000/api/auth/login/",
                 json={"username": uname, "password": pwd},
-                timeout=5.0
+                timeout=3.0
             )
             if resp.status_code == 200:
-                data = resp.json().get("user", {})
+                res_data = resp.json()
+                data = res_data.get("user") or res_data.get("data") or {}
                 self.is_logged_in = True
                 self.current_user_id = data.get("user_id", 0)
                 self.current_user_name = data.get("full_name") or uname
-                role_val = data.get("role_name")
+                role_val = data.get("role_name") or data.get("role")
                 if not role_val and isinstance(data.get("role"), dict):
                     role_val = data.get("role", {}).get("role_name")
                 self.current_user_role = str(role_val or "STUDENT").upper()
                 self.login_error = ""
-
-                # Điều hướng theo vai trò (Role) lấy trực tiếp từ database PostgreSQL
-                if self.current_user_role == "ADMIN":
-                    return rx.redirect("/admin/users")
-                elif self.current_user_role == "LECTURER":
-                    return rx.redirect("/lecturer/dashboard")
-                else:
-                    return rx.redirect("/documents")
+                api_success = True
             elif resp.status_code == 401:
                 self.login_error = "Tài khoản hoặc mật khẩu không chính xác."
                 return
-            else:
-                self.login_error = f"Lỗi xác thực ({resp.status_code}). Vui lòng thử lại."
+            elif resp.status_code == 403:
+                self.login_error = "Tài khoản của bạn đã bị vô hiệu hóa hoặc khóa."
                 return
         except Exception:
-            self.login_error = "Không thể kết nối đến máy chủ Django Backend (127.0.0.1:8000). Vui lòng đảm bảo backend đang chạy."
+            # Django server chưa bật hoặc kết nối HTTP bị chặn
+            pass
+
+        # Cách 2: Tự động kết nối trực tiếp vào PostgreSQL qua Django ORM (Dự phòng thông minh)
+        if not api_success:
+            try:
+                import os, sys
+                backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+                if backend_dir not in sys.path:
+                    sys.path.insert(0, backend_dir)
+                os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+                import django
+                django.setup()
+                from django.contrib.auth import authenticate
+                user = authenticate(None, username=uname, password=pwd)
+                if user:
+                    if not user.is_active:
+                        self.login_error = "Tài khoản của bạn đã bị vô hiệu hóa hoặc khóa."
+                        return
+                    self.is_logged_in = True
+                    self.current_user_id = user.id
+                    self.current_user_name = user.full_name or user.username
+                    self.current_user_role = str(user.role.role_name if user.role else "STUDENT").upper()
+                    self.login_error = ""
+                    api_success = True
+                else:
+                    self.login_error = "Tài khoản hoặc mật khẩu không chính xác."
+                    return
+            except Exception as e:
+                self.login_error = f"Lỗi xác thực: {str(e)}"
+                return
+
+        # Đồng bộ tài khoản vào GlobalDocState để navbar và các trang đều nhận diện đúng người dùng
+        try:
+            from .data_store import GlobalDocState
+            GlobalDocState.current_user_name = self.current_user_name
+            GlobalDocState.current_user_role = self.current_user_role
+        except Exception:
+            pass
+
+        # Điều hướng theo vai trò (Role) lấy trực tiếp từ database PostgreSQL
+        if self.current_user_role == "ADMIN":
+            return rx.redirect("/admin/users")
+        elif self.current_user_role == "LECTURER":
+            return rx.redirect("/lecturer/dashboard")
+        else:
+            return rx.redirect("/documents")
 
     def logout(self):
         try:
@@ -268,10 +316,10 @@ def login_page() -> rx.Component:
                     rx.callout.icon(rx.icon("info", size=14)),
                     rx.callout.text(
                         rx.vstack(
-                            rx.text("Tài khoản demo:", size="1", weight="bold"),
-                            rx.text("admin / admin123 (Quản trị viên)", size="1"),
-                            rx.text("gv.nguyenan / gv123 (Giảng viên)", size="1"),
-                            rx.text("sv.namle / sv123 (Sinh viên)", size="1"),
+                            rx.text("Tài khoản trong Database PostgreSQL:", size="1", weight="bold"),
+                            rx.text("• Quản trị viên: admin / admin123 (hoặc 123456)", size="1"),
+                            rx.text("• Giảng viên: gv01 / gv123 (hoặc password123, 123456)", size="1"),
+                            rx.text("• Sinh viên: sv01, sv07... / sv123 (hoặc password123, 123456)", size="1"),
                             spacing="0",
                         )
                     ),

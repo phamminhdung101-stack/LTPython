@@ -4,18 +4,23 @@ from academics.serializers import SubjectSerializer
 
 
 class TagSerializer(serializers.ModelSerializer):
+    tag_id = serializers.IntegerField(source='id', read_only=True)
+
     class Meta:
         model = Tag
         fields = ['tag_id', 'tag_name']
 
 
 class FolderSerializer(serializers.ModelSerializer):
+    folder_id = serializers.IntegerField(source='id', read_only=True)
+
     class Meta:
         model = Folder
         fields = ['folder_id', 'folder_name', 'subject_id', 'parent_folder_id', 'created_by_id', 'created_at']
 
 
 class DocumentVersionSerializer(serializers.ModelSerializer):
+    version_id = serializers.IntegerField(source='id', read_only=True)
     metadata = serializers.DictField(source='metadata_dict', read_only=True)
 
     class Meta:
@@ -33,6 +38,7 @@ class DocumentVersionSerializer(serializers.ModelSerializer):
 
 
 class DocumentSerializer(serializers.ModelSerializer):
+    document_id = serializers.IntegerField(source='id', read_only=True)
     subject = SubjectSerializer(read_only=True)
     tags = TagSerializer(many=True, read_only=True)
     uploader_name = serializers.CharField(source='uploader.full_name', read_only=True, default='')
@@ -94,7 +100,7 @@ class DocumentSerializer(serializers.ModelSerializer):
         return latest.file_path if latest else ''
 
     def get_download_url(self, obj):
-        return f"/api/documents/{obj.document_id}/download/"
+        return f"/api/documents/{obj.id}/download/"
 
 
 class DocumentActivityLogSerializer(serializers.ModelSerializer):

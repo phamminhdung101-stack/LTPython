@@ -13,7 +13,7 @@ def generate_jwt_token(user, expires_in_days=7) -> str:
     now = datetime.now(timezone.utc)
     role_name = user.role.role_name if user.role else 'STUDENT'
     payload = {
-        'user_id': user.user_id,
+        'user_id': user.id,
         'username': user.username,
         'role': role_name,
         'department_id': getattr(user, 'department_id', None),
@@ -77,3 +77,34 @@ class JWTAuthentication(BaseAuthentication):
             raise AuthenticationFailed('Tài khoản của bạn hiện đang bị khóa hoặc chưa được kích hoạt.')
 
         return (user, token)
+
+
+class JWTAuthenticationMiddleware:
+    """
+    Django Middleware: Tự động trích xuất Bearer token từ Authorization header
+    hoặc URL query parameter 'token' để gắn trực tiếp user vào request.user.
+    """
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        auth_header = request.headers.get('Authorization') or request.META.get('HTTP_AUTHORIZATION')
+        token = None
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header.split(' ', 1)[1].strip()
+        elif hasattr(request, 'GET') and 'token' in request.GET:
+            token = request.GET.get('token')
+
+        if token:
+            try:
+                payload = decode_jwt_token(token)
+                user_id = payload.get('user_id')
+                if user_id:
+                    user = User.objects.select_related('role', 'department', 'student_class').get(pk=user_id)
+                    if user.is_active:
+                        request.user = user
+            except Exception:
+                pass
+
+        return self.get_response(request)
+

@@ -15,6 +15,7 @@ Phần 3:
 - GET /api/documents/<id>/logs/ : Nhật ký kiểm toán hoạt động (Audit Activity Logs)
 """
 
+import os
 import json
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_http_methods
@@ -22,13 +23,14 @@ from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Count
 
 from .models import Document, DocumentVersion, DocumentActivityLog, Folder, Tag
 from academics.models import Subject
 from .validators import validate_file_upload
 from .r2_service import r2_service
 from permissions.services import can_user_access_document, can_user_download_document
+from .indexing_service import index_document, get_indexing_stats
 
 
 def _json_error(message: str, status: int = 400, errors=None) -> JsonResponse:
@@ -148,6 +150,12 @@ def upload_document_api(request):
             description=f"Tải lên tài liệu mới '{title}' (Dung lượng: {round(meta['file_size']/1024, 1)} KB, SHA-256: {meta['checksum_sha256'][:12]}...)",
         )
 
+        # 7. Tự động Indexing phục vụ tìm kiếm ngữ cảnh AI
+        try:
+            index_document(doc, user=user)
+        except Exception:
+            pass
+
     download_url = r2_service.generate_download_url(object_key)
 
     data = {
@@ -259,25 +267,96 @@ def delete_document_api(request, pk):
     )
 
 
-@require_http_methods(["GET"])
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
 def document_list_api(request):
     """
-    API Danh sách tài liệu với bộ lọc:
-    - q: tìm kiếm theo tiêu đề hoặc tên môn
-    - subject_id: lọc theo môn
-    - department_id: lọc theo khoa
-    - status: PENDING, APPROVED, REJECTED
-    - sort: newest, downloads, views
+    API Danh sách tài liệu với bộ lọc hoặc tạo tài liệu mới:
     """
+    if request.method == "POST":
+        body = {}
+        if request.body:
+            try:
+                body = json.loads(request.body.decode('utf-8'))
+            except Exception:
+                pass
+        title = body.get('title') or request.POST.get('title', '').strip()
+        description = body.get('description') or request.POST.get('description', '').strip()
+        subject_id = body.get('subject_id') or request.POST.get('subject_id')
+        folder_id = body.get('folder_id') or request.POST.get('folder_id')
+        is_public = body.get('is_public', False)
+        if isinstance(is_public, str):
+            is_public = is_public.lower() in ('true', '1', 'yes')
+
+        if not title:
+            return _json_error("Tiêu đề tài liệu là bắt buộc.", 400)
+        if not subject_id:
+            return _json_error("Môn học là bắt buộc.", 400)
+
+        try:
+            subject = Subject.objects.get(pk=subject_id)
+        except Subject.DoesNotExist:
+            return _json_error("Môn học không tồn tại.", 404)
+
+        user = request.user if request.user.is_authenticated else None
+        folder = None
+        if folder_id:
+            try:
+                folder = Folder.objects.get(pk=folder_id)
+            except Folder.DoesNotExist:
+                pass
+
+        doc_status = Document.APPROVED if is_public else Document.PENDING
+        approved_by = None
+        approved_at = None
+        if doc_status == Document.APPROVED:
+            approved_by = user or User.objects.filter(role__role_name='ADMIN').first()
+            approved_at = timezone.now()
+
+        doc = Document.objects.create(
+            title=title,
+            description=description,
+            subject=subject,
+            folder=folder,
+            uploader=user,
+            status=doc_status,
+            approved_by=approved_by,
+            approved_at=approved_at,
+            is_public=bool(is_public),
+        )
+        doc_payload = {
+            'document_id': doc.id,
+            'id': doc.id,
+            'title': doc.title,
+            'description': doc.description,
+            'subject_id': doc.subject_id,
+            'status': doc.status,
+            'is_public': doc.is_public,
+        }
+        return JsonResponse({
+            'status': 'ok',
+            'message': 'Tạo tài liệu thành công.',
+            'document': doc_payload,
+            'data': doc_payload,
+        }, status=201, json_dumps_params={'ensure_ascii': False})
+
     user = request.user
     qs = Document.objects.select_related('subject__department', 'uploader', 'approved_by')
 
-    # Nếu là sinh viên thông thường: chỉ thấy APPROVED & public, hoặc bài của chính mình
-    if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
-        if user.is_authenticated:
-            qs = qs.filter(Q(status=Document.APPROVED, is_public=True) | Q(uploader=user))
-        else:
-            qs = qs.filter(status=Document.APPROVED, is_public=True)
+    scope = request.GET.get('scope', 'all')
+    if scope == 'strict':
+        # Nếu là sinh viên thông thường và yêu cầu lọc nghiêm ngặt: chỉ thấy APPROVED & public, hoặc bài của chính mình
+        if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
+            if user.is_authenticated:
+                qs = qs.filter(Q(status=Document.APPROVED, is_public=True) | Q(uploader=user))
+            else:
+                qs = qs.filter(status=Document.APPROVED, is_public=True)
+
+    uploader_param = request.GET.get('uploader', '').strip()
+    if uploader_param == 'me' and user.is_authenticated:
+        qs = qs.filter(uploader=user)
+    elif uploader_param and uploader_param.isdigit():
+        qs = qs.filter(uploader_id=int(uploader_param))
 
     q = request.GET.get('q', '').strip()
     if q:
@@ -291,9 +370,17 @@ def document_list_api(request):
     if dept_id:
         qs = qs.filter(subject__department_id=dept_id)
 
-    status = request.GET.get('status')
-    if status:
-        qs = qs.filter(status=status.upper())
+    doc_status = request.GET.get('status')
+    if doc_status and doc_status.upper() != 'ALL':
+        qs = qs.filter(status=doc_status.upper())
+
+    folder_id = request.GET.get('folder_id')
+    if folder_id:
+        qs = qs.filter(folder_id=folder_id)
+
+    tag_filter = request.GET.get('tag', '').strip()
+    if tag_filter:
+        qs = qs.filter(tags__tag_name__iexact=tag_filter)
 
     sort = request.GET.get('sort', 'newest')
     if sort == 'downloads':
@@ -301,44 +388,105 @@ def document_list_api(request):
     elif sort == 'views':
         qs = qs.order_by('-view_count')
     else:
-        qs = qs.order_by('-created_at')
+        qs = qs.order_by('id')
 
     data = []
-    for d in qs[:50]:
+    for d in qs:
         latest = d.latest_version
+        dept_obj = d.subject.department if d.subject else None
+        str_file = str(latest.file) if (latest and latest.file) else ''
+        fname = os.path.basename(str_file) if str_file else f"document_{d.id}.pdf"
+        fsize = 1024 * 1024 * 2
+
         data.append({
             'document_id': d.id,
+            'id': d.id,
             'title': d.title,
-            'description': d.description,
+            'description': d.description or '',
             'subject_id': d.subject_id,
+            'subject': {
+                'subject_id': d.subject_id,
+                'subject_name': d.subject.subject_name if d.subject else '',
+                'department': {
+                    'department_id': dept_obj.id if dept_obj else None,
+                    'department_name': dept_obj.department_name if dept_obj else '',
+                }
+            },
             'subject_name': d.subject.subject_name if d.subject else '',
-            'department_name': d.subject.department.department_name if d.subject and d.subject.department else '',
+            'department_name': dept_obj.department_name if dept_obj else '',
             'status': d.status,
             'is_public': d.is_public,
             'view_count': d.view_count,
             'download_count': d.download_count,
-            'uploader_name': d.uploader.full_name if d.uploader else 'Ẩn danh',
-            'latest_version': latest.version_number if latest else None,
-            'created_at': d.created_at.strftime('%Y-%m-%d %H:%M'),
+            'uploader_id': d.uploader_id,
+            'uploader_name': d.uploader.full_name if (d.uploader and d.uploader.full_name) else (d.uploader.username if d.uploader else 'Ẩn danh'),
+            'file_name': fname,
+            'original_file_name': fname,
+            'file_size': fsize,
+            'folder_id': d.folder_id,
+            'folder_name': d.folder.folder_name if d.folder else None,
+            'tags': [t.tag_name for t in d.tags.all()],
+            'latest_version': latest.version_number if latest else 'v1.0',
+            'created_at': d.created_at.strftime('%Y-%m-%d %H:%M') if d.created_at else '',
         })
 
-    return _json_ok(data)
+    return JsonResponse({
+        'status': 'ok',
+        'message': 'Thành công',
+        'documents': data,
+        'data': data,
+        'total': len(data),
+    }, status=200, json_dumps_params={'ensure_ascii': False})
 
 
 @csrf_exempt
-@require_http_methods(["GET", "DELETE"])
+@require_http_methods(["GET", "PATCH", "DELETE"])
 def document_detail_api(request, pk):
     """
-    API Chi tiết hoặc Xóa tài liệu:
-    - GET: Chi tiết tài liệu, kiểm tra quyền truy cập, ghi log VIEW
-    - DELETE: Xóa tài liệu và file trên Cloudflare R2, ghi log DELETE
+    API Chi tiết, Sửa hoặc Xóa tài liệu:
+    - GET: Chi tiết tài liệu
+    - PATCH: Cập nhật tiêu đề, mô tả
+    - DELETE: Xóa tài liệu
     """
     if request.method == "DELETE":
         return delete_document_api(request, pk)
+
     doc = get_object_or_404(
         Document.objects.select_related('subject__department', 'uploader', 'approved_by').prefetch_related('tags', 'versions'),
         pk=pk,
     )
+
+    if request.method == "PATCH":
+        body = {}
+        if request.body:
+            try:
+                body = json.loads(request.body.decode('utf-8'))
+            except Exception:
+                pass
+        if 'title' in body:
+            doc.title = body['title']
+        if 'description' in body:
+            doc.description = body['description']
+        if 'is_public' in body:
+            doc.is_public = bool(body['is_public'])
+        if 'status' in body:
+            doc.status = body['status']
+        doc.save()
+        doc_payload = {
+            'document_id': doc.id,
+            'id': doc.id,
+            'title': doc.title,
+            'description': doc.description,
+            'status': doc.status,
+            'is_public': doc.is_public,
+        }
+        return JsonResponse({
+            'status': 'ok',
+            'message': 'Cập nhật tài liệu thành công.',
+            'document': doc_payload,
+            'data': doc_payload,
+        }, status=200, json_dumps_params={'ensure_ascii': False})
+
     user = request.user
 
     can_view, view_reason = can_user_access_document(user, doc)
@@ -535,11 +683,15 @@ def create_version_api(request, pk):
     }, message=f"Đã nâng cấp phiên bản lên v{next_ver}.0 thành công.", status=201)
 
 
-@require_http_methods(["GET"])
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
 def version_list_api(request, pk):
     """
-    API Lấy danh sách lịch sử tất cả phiên bản của một tài liệu.
+    API Lấy danh sách lịch sử tất cả phiên bản của một tài liệu hoặc tải lên phiên bản mới.
     """
+    if request.method == "POST":
+        return create_version_api(request, pk)
+
     doc = get_object_or_404(Document, pk=pk)
     user = request.user
     can_download, _ = can_user_download_document(user, doc)
@@ -547,6 +699,7 @@ def version_list_api(request, pk):
     versions = []
     for v in doc.versions.order_by('-version_number'):
         versions.append({
+            'id': v.id,
             'version_id': v.id,
             'version_number': v.version_number,
             'object_key': v.object_key,
@@ -589,3 +742,367 @@ def document_logs_api(request, pk):
         'total_logs': len(data),
         'logs': data,
     })
+
+
+@require_http_methods(["GET"])
+def activity_logs_api(request):
+    """
+    API Lấy nhật ký hoạt động chung của toàn hệ thống kèm bộ lọc (Action, User, Document, Days, Search).
+    """
+    qs = DocumentActivityLog.objects.select_related('document', 'user').order_by('-created_at')
+
+    action = request.GET.get('action')
+    if action and action.upper() != 'ALL':
+        qs = qs.filter(action=action.upper())
+
+    user_id = request.GET.get('user_id')
+    if user_id:
+        qs = qs.filter(user_id=user_id)
+
+    doc_id = request.GET.get('document_id')
+    if doc_id:
+        qs = qs.filter(document_id=doc_id)
+
+    q = request.GET.get('q', '').strip()
+    if q:
+        qs = qs.filter(Q(description__icontains=q) | Q(document__title__icontains=q))
+
+    days = request.GET.get('days')
+    if days and days.isdigit():
+        from datetime import timedelta
+        since = timezone.now() - timedelta(days=int(days))
+        qs = qs.filter(created_at__gte=since)
+
+    limit = int(request.GET.get('limit', 100))
+    logs = qs[:limit]
+
+    data = [{
+        'log_id': log.id,
+        'document_id': log.document_id,
+        'document_title': log.document.title if log.document else 'Tài liệu',
+        'user_id': log.user_id,
+        'user_name': log.user.full_name if (log.user and log.user.full_name) else (log.user.username if log.user else 'Hệ thống / Ẩn danh'),
+        'user_role': log.user.role.role_name if (log.user and log.user.role) else 'User',
+        'action': log.action,
+        'action_display': log.get_action_display(),
+        'description': log.description,
+        'created_at': log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '',
+    } for log in logs]
+
+    return JsonResponse({
+        'status': 'ok',
+        'logs': data,
+        'data': data,
+        'total': len(data),
+    }, status=200, json_dumps_params={'ensure_ascii': False})
+
+
+# ─── TAG MANAGEMENT APIs ─────────────────────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def tag_list_create_api(request):
+    """
+    API Quản lý thẻ tài liệu:
+    - GET: Danh sách tất cả thẻ kèm số lượng tài liệu gắn thẻ
+    - POST: Tạo thẻ mới (Admin / Giảng viên)
+    """
+    if request.method == "GET":
+        tags = Tag.objects.annotate(doc_count=Count('documents')).order_by('tag_name')
+        q = request.GET.get('q', '').strip()
+        if q:
+            tags = tags.filter(tag_name__icontains=q)
+
+        data = [{
+            'id': t.id,
+            'tag_id': t.id,
+            'tag_name': t.tag_name,
+            'doc_count': t.doc_count,
+        } for t in tags]
+
+        return JsonResponse({
+            'status': 'ok',
+            'tags': data,
+            'data': data,
+            'total': len(data),
+        }, status=200, json_dumps_params={'ensure_ascii': False})
+
+    # POST: Tạo thẻ mới
+    user = request.user
+    if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
+        return _json_error("Chỉ Quản trị viên hoặc Giảng viên mới có quyền tạo thẻ tag.", 403)
+
+    name = request.POST.get('tag_name', '').strip().lower()
+    if not name:
+        try:
+            b = json.loads(request.body.decode('utf-8'))
+            name = b.get('tag_name', '').strip().lower()
+        except Exception:
+            pass
+
+    if not name:
+        return _json_error("Tên thẻ (tag_name) không được để trống.", 400)
+
+    tag, created = Tag.objects.get_or_create(tag_name=name)
+    return _json_ok({
+        'id': tag.id,
+        'tag_id': tag.id,
+        'tag_name': tag.tag_name,
+        'created': created,
+    }, message=f"Đã {'tạo mới' if created else 'lấy'} thẻ #{tag.tag_name}.", status=201 if created else 200)
+
+
+@csrf_exempt
+@require_http_methods(["PATCH", "DELETE"])
+def tag_detail_api(request, pk):
+    """Chỉnh sửa hoặc xóa thẻ tag (Admin only)."""
+    tag = get_object_or_404(Tag, pk=pk)
+    user = request.user
+    if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
+        return _json_error("Chỉ Quản trị viên hoặc Giảng viên mới có quyền chỉnh sửa/xóa thẻ tag.", 403)
+
+    if request.method == "PATCH":
+        data = {}
+        if request.body:
+            try:
+                data = json.loads(request.body.decode('utf-8'))
+            except Exception:
+                pass
+        if not data:
+            data = request.POST
+        new_name = data.get('tag_name', '').strip().lower()
+        if not new_name:
+            return _json_error("Tên thẻ mới không được để trống.", 400)
+        tag.tag_name = new_name
+        tag.save()
+        return _json_ok({'id': tag.id, 'tag_name': tag.tag_name}, message=f"Đã cập nhật tên thẻ thành #{tag.tag_name}.")
+
+    if request.method == "DELETE":
+        name = tag.tag_name
+        tag.delete()
+        return _json_ok({'deleted_tag_id': pk}, message=f"Đã xóa thẻ #{name} khỏi hệ thống.")
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def document_attach_tag_api(request, pk):
+    """Gắn thẻ tag vào tài liệu."""
+    doc = get_object_or_404(Document, pk=pk)
+    user = request.user
+    is_owner = (user.is_authenticated and doc.uploader_id == user.id)
+    is_staff = (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False)))
+    if not (is_owner or is_staff):
+        return _json_error("Bạn không có quyền gắn thẻ cho tài liệu này.", 403)
+
+    data = {}
+    if request.body:
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+        except Exception:
+            pass
+    if not data:
+        data = request.POST
+
+    tag_name = data.get('tag_name', '').strip().lower()
+    tag_id = data.get('tag_id')
+    if tag_id:
+        t_obj = Tag.objects.filter(id=tag_id).first()
+        if t_obj:
+            tag_name = t_obj.tag_name
+    tags_list = data.get('tags', [])
+    if isinstance(tags_list, str):
+        tags_list = [t.strip().lower() for t in tags_list.split(',') if t.strip()]
+
+    if tag_name and tag_name not in tags_list:
+        tags_list.append(tag_name)
+
+    attached = []
+    for t_name in tags_list:
+        if t_name:
+            tag, _ = Tag.objects.get_or_create(tag_name=t_name)
+            doc.tags.add(tag)
+            attached.append(tag.tag_name)
+            DocumentActivityLog.objects.create(
+                document=doc,
+                user=user,
+                action='ADD_TAG',
+                description=f"Gắn thẻ #{tag.tag_name} vào tài liệu '{doc.title}'.",
+            )
+
+    return _json_ok({
+        'document_id': doc.id,
+        'attached_tags': attached,
+        'current_tags': [t.tag_name for t in doc.tags.all()],
+    }, message=f"Đã gắn {len(attached)} thẻ vào tài liệu.")
+
+
+@csrf_exempt
+@require_http_methods(["DELETE", "POST"])
+def document_detach_tag_api(request, pk, tag_id):
+    """Gỡ thẻ tag khỏi tài liệu."""
+    doc = get_object_or_404(Document, pk=pk)
+    tag = get_object_or_404(Tag, pk=tag_id)
+    user = request.user
+    is_owner = (user.is_authenticated and doc.uploader_id == user.id)
+    is_staff = (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False)))
+    if not (is_owner or is_staff):
+        return _json_error("Bạn không có quyền gỡ thẻ của tài liệu này.", 403)
+
+    doc.tags.remove(tag)
+    DocumentActivityLog.objects.create(
+        document=doc,
+        user=user,
+        action='REMOVE_TAG',
+        description=f"Gỡ thẻ #{tag.tag_name} khỏi tài liệu '{doc.title}'.",
+    )
+    return _json_ok({
+        'document_id': doc.id,
+        'detached_tag': tag.tag_name,
+        'current_tags': [t.tag_name for t in doc.tags.all()],
+    }, message=f"Đã gỡ thẻ #{tag.tag_name} khỏi tài liệu.")
+
+
+# ─── VERSIONING RESTORE & DOWNLOAD APIs ──────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def version_restore_api(request, pk, ver_id):
+    """
+    Khôi phục tài liệu về phiên bản cũ:
+    Tạo một phiên bản mới với version_number tăng dần kế thừa file từ phiên bản cũ,
+    không xóa lịch sử các phiên bản trung gian.
+    """
+    doc = get_object_or_404(Document, pk=pk)
+    target_ver = get_object_or_404(DocumentVersion, pk=ver_id, document=doc)
+    user = request.user
+    is_owner = (user.is_authenticated and doc.uploader_id == user.id)
+    is_staff = (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False)))
+    if not (is_owner or is_staff):
+        return _json_error("Bạn không có quyền khôi phục phiên bản tài liệu.", 403)
+
+    latest = doc.latest_version
+    next_ver = (latest.version_number + 1) if latest else 1
+
+    summary = f"Khôi phục từ phiên bản v{target_ver.version_number}.0 (Gốc: {target_ver.change_summary or 'Ban đầu'})"
+    new_ver = DocumentVersion.objects.create(
+        document=doc,
+        file=target_ver.file,
+        version_number=next_ver,
+        change_summary=summary,
+        updated_by=user if user.is_authenticated else None,
+    )
+
+    DocumentActivityLog.objects.create(
+        document=doc,
+        user=user if user.is_authenticated else None,
+        action='UPDATE',
+        description=f"Khôi phục nội dung từ phiên bản v{target_ver.version_number}.0 thành phiên bản v{next_ver}.0",
+    )
+
+    try:
+        index_document(doc, user=user)
+    except Exception:
+        pass
+
+    return _json_ok({
+        'document_id': doc.id,
+        'restored_from_version': target_ver.version_number,
+        'new_version_id': new_ver.id,
+        'new_version_number': new_ver.version_number,
+        'change_summary': new_ver.change_summary,
+    }, message=f"Đã khôi phục tài liệu thành công về phiên bản mới v{next_ver}.0.")
+
+
+@require_http_methods(["GET"])
+def version_download_api(request, pk, ver_id):
+    """Tải xuống file của một phiên bản cụ thể."""
+    doc = get_object_or_404(Document, pk=pk)
+    version = get_object_or_404(DocumentVersion, pk=ver_id, document=doc)
+    user = request.user
+
+    can_download, reason = can_user_download_document(user, doc)
+    if not can_download:
+        return _json_error(reason, 403)
+
+    DocumentActivityLog.objects.create(
+        document=doc,
+        user=user if user.is_authenticated else None,
+        action='DOWNLOAD',
+        description=f"Tải xuống phiên bản lịch sử v{version.version_number}.0 (Object: {version.object_key})",
+    )
+    download_url = version.get_download_url(expires_in=3600)
+    return _json_ok({
+        'document_id': doc.id,
+        'version_id': version.id,
+        'version_number': version.version_number,
+        'download_url': download_url,
+    })
+
+
+# ─── SUBMIT FOR APPROVAL API ─────────────────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def submit_approval_api(request, pk):
+    """Gửi tài liệu vào hàng đợi xét duyệt công khai (status -> PENDING)."""
+    doc = get_object_or_404(Document, pk=pk)
+    user = request.user
+    is_owner = (user.is_authenticated and doc.uploader_id == user.id)
+    is_staff = (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False)))
+    if not (is_owner or is_staff):
+        return _json_error("Bạn không có quyền gửi duyệt tài liệu này.", 403)
+
+    doc.status = Document.PENDING
+    doc.save(update_fields=['status'])
+
+    DocumentActivityLog.objects.create(
+        document=doc,
+        user=user if user.is_authenticated else None,
+        action='UPDATE',
+        description=f"Gửi tài liệu '{doc.title}' vào hàng đợi kiểm duyệt công khai.",
+    )
+    return _json_ok({
+        'document_id': doc.id,
+        'status': doc.status,
+    }, message=f"Đã gửi tài liệu '{doc.title}' vào hàng đợi xét duyệt.")
+
+
+# ─── INDEXING APIS ───────────────────────────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def reindex_document_api(request, pk):
+    """Reindex một tài liệu cụ thể (Admin / Giảng viên)."""
+    doc = get_object_or_404(Document, pk=pk)
+    user = request.user
+    if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
+        return _json_error("Chỉ Quản trị viên mới có quyền Indexing tài liệu.", 403)
+
+    res = index_document(doc, user=user)
+    return _json_ok(res, message=f"Đã Indexing thành công tài liệu '{doc.title}'.")
+
+
+@require_http_methods(["GET"])
+def indexing_status_api(request):
+    """Thống kê trạng thái Indexing toàn hệ thống từ PostgreSQL."""
+    return _json_ok(get_indexing_stats())
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def indexing_run_all_api(request):
+    """Chạy Indexing toàn bộ tài liệu trong hệ thống (Admin only)."""
+    user = request.user
+    if not (user.is_authenticated and getattr(user, 'is_admin', False)):
+        return _json_error("Chỉ Quản trị viên mới có quyền chạy Indexing toàn bộ hệ thống.", 403)
+
+    docs = Document.objects.all()
+    count = 0
+    for d in docs:
+        index_document(d, user=user)
+        count += 1
+
+    stats = get_indexing_stats()
+    stats['indexed_count'] = count
+    return _json_ok(stats, message=f"Đã Indexing toàn bộ {count} tài liệu vào PostgreSQL.")
+

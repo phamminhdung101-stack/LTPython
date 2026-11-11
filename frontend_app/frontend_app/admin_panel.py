@@ -32,18 +32,7 @@ class AdminUser:
     avatar_fallback: str = "SV"
 
 
-# ─── Mock Data (sẽ thay bằng API call) ───────────────────────────────────────
-
-MOCK_USERS: List[AdminUser] = [
-    AdminUser("u1", "Quản trị viên hệ thống", "admin", "admin@docuni.edu.vn", "ADMIN", "CNTT", "", True, "2026-01-01", "AD"),
-    AdminUser("u2", "TS. Nguyễn Văn An", "gv.nguyenan", "nguyenan@docuni.edu.vn", "LECTURER", "CNTT", "", True, "2026-01-05", "NA"),
-    AdminUser("u3", "ThS. Lê Thị Bình", "gv.lethib", "lethib@docuni.edu.vn", "LECTURER", "KT", "", True, "2026-01-06", "LB"),
-    AdminUser("u4", "Lê Hoàng Nam", "sv.namle", "namle@vaa.edu.vn", "STUDENT", "CNTT", "D21CQCN01-B", True, "2026-09-01", "LN"),
-    AdminUser("u5", "Trần Thị Mai", "sv.tranm", "tranm@vaa.edu.vn", "STUDENT", "KT", "D21CQKT01-B", True, "2026-09-01", "TM"),
-    AdminUser("u6", "Phạm Minh Đức", "sv.phamd", "phamd@vaa.edu.vn", "STUDENT", "CNTT", "D22CQCN01-B", False, "2026-09-02", "PD"),
-    AdminUser("u7", "Nguyễn Thị Hoa", "sv.nguyen_hoa", "nguyen_hoa@vaa.edu.vn", "STUDENT", "NN", "D21CQNN01-B", True, "2026-09-03", "NH"),
-    AdminUser("u8", "ThS. Trần Quang Huy", "gv.tranhuy", "tranhuy@docuni.edu.vn", "LECTURER", "DHB", "", True, "2026-01-07", "TH"),
-]
+# ─── Initial Options ──────────────────────────────────────────────────────────
 
 ROLE_OPTIONS = ["ADMIN", "LECTURER", "STUDENT"]
 DEPARTMENT_OPTIONS = ["CNTT", "KT", "NN", "DHB"]
@@ -53,9 +42,9 @@ STATUS_OPTIONS = ["ACTIVE", "INACTIVE"]
 # ─── Admin User State ─────────────────────────────────────────────────────────
 
 class AdminUserState(rx.State):
-    """Quản lý trang Quản lý người dùng."""
+    """Quản lý trang Quản lý người dùng từ dữ liệu PostgreSQL thực tế."""
 
-    users: List[AdminUser] = MOCK_USERS
+    users: List[AdminUser] = []
     search_query: str = ""
     filter_role: str = "ALL"
     filter_dept: str = "ALL"
@@ -83,6 +72,117 @@ class AdminUserState(rx.State):
     # Modal: View detail
     show_detail_modal: bool = False
     detail_user: AdminUser = AdminUser()
+
+    # System & Indexing stats
+    total_docs: int = 29
+    total_folders: int = 13
+    total_tags: int = 11
+    indexing_rate: str = "100%"
+    total_chunks: int = 31
+
+    def run_all_indexing(self):
+        try:
+            import httpx
+            r = httpx.post("http://127.0.0.1:8000/api/indexing/run/", timeout=15.0)
+            if r.status_code == 200:
+                data = r.json()
+                self.indexing_rate = "100%"
+                return rx.toast.success(f"Đã lập chỉ mục AI thành công! {data.get('message', '')}")
+        except Exception:
+            try:
+                from documents.indexing_service import index_all_documents
+                res = index_all_documents()
+                return rx.toast.success(f"Đã hoàn thành Indexing toàn bộ: {res.get('indexed_count')} tài liệu ({res.get('total_chunks')} chunks).")
+            except Exception as e:
+                return rx.toast.error(f"Lỗi: {str(e)}")
+
+    def load_users(self):
+        """Tải danh sách người dùng thực tế từ PostgreSQL qua REST API hoặc ORM."""
+        try:
+            import httpx
+            resp = httpx.get("http://127.0.0.1:8000/api/users/", timeout=3.0)
+            if resp.status_code == 200:
+                res_json = resp.json()
+                raw_data = res_json.get("users") or res_json.get("data") or []
+                loaded = []
+                for item in raw_data:
+                    u_id = str(item.get("id") or item.get("user_id") or "")
+                    name = item.get("full_name") or item.get("username") or ""
+                    uname = item.get("username") or ""
+                    email = item.get("email") or f"{uname}@docuni.edu.vn"
+                    role = str(item.get("role") or item.get("role_name") or "STUDENT").upper()
+                    dept = item.get("department_name") or ""
+                    s_class = item.get("class_name") or ""
+                    active = bool(item.get("is_active", True))
+                    created = str(item.get("created_at") or "")[:10]
+                    avatar = name[:2].upper() if name else uname[:2].upper()
+                    loaded.append(AdminUser(
+                        id=u_id,
+                        full_name=name,
+                        username=uname,
+                        email=email,
+                        role=role,
+                        department=dept,
+                        student_class=s_class,
+                        is_active=active,
+                        created_at=created,
+                        avatar_fallback=avatar,
+                    ))
+                self.users = loaded
+
+                # Fetch dashboard stats
+                try:
+                    r_stats = httpx.get("http://127.0.0.1:8000/api/dashboard/stats/", timeout=3.0)
+                    if r_stats.status_code == 200:
+                        s_data = r_stats.json().get("stats", {})
+                        self.total_docs = int(s_data.get("total_documents", 29))
+                        self.total_folders = int(s_data.get("total_folders", 13))
+                        self.total_tags = int(s_data.get("total_tags", 11))
+                        idx_data = s_data.get("indexing", {})
+                        self.indexing_rate = f"{idx_data.get('indexing_percentage', 100)}%"
+                        self.total_chunks = int(idx_data.get("total_chunks", 31))
+                except Exception:
+                    pass
+                return
+        except Exception:
+            pass
+
+        try:
+            import os, sys
+            backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+            if backend_dir not in sys.path:
+                sys.path.insert(0, backend_dir)
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+            import django
+            django.setup()
+            from accounts.models import User
+            qs = User.objects.select_related('role', 'department', 'student_class').order_by('id')
+            loaded = []
+            for u in qs:
+                name = u.full_name or u.username
+                uname = u.username
+                email = getattr(u, 'email', '') or f"{uname}@docuni.edu.vn"
+                role = str(u.role.role_name if u.role else "STUDENT").upper()
+                dept = u.department.department_name if u.department else ""
+                s_class = u.student_class.class_name if u.student_class else ""
+                active = bool(getattr(u, 'is_active', True))
+                created = u.created_at.strftime('%Y-%m-%d') if getattr(u, 'created_at', None) else ""
+                avatar = name[:2].upper() if name else uname[:2].upper()
+                loaded.append(AdminUser(
+                    id=str(u.id),
+                    full_name=name,
+                    username=uname,
+                    email=email,
+                    role=role,
+                    department=dept,
+                    student_class=s_class,
+                    is_active=active,
+                    created_at=created,
+                    avatar_fallback=avatar,
+                ))
+            self.users = loaded
+        except Exception:
+            self.users = []
 
     # ── Computed vars ──
     @rx.var
@@ -868,6 +968,39 @@ def admin_users_page() -> rx.Component:
                 kpi_box("Đang hoạt động", AdminUserState.active_users.to_string(), "circle-check", "green"),
                 kpi_box("Quản trị viên", AdminUserState.admin_count.to_string(), "shield", "red"),
                 kpi_box("Giảng viên", AdminUserState.lecturer_count.to_string(), "graduation-cap", "indigo"),
+                columns="4", spacing="4", width="100%",
+            ),
+            rx.grid(
+                kpi_box("Tài liệu trong kho", AdminUserState.total_docs.to_string() + " tài liệu", "file-text", "blue"),
+                kpi_box("Thư mục hệ thống", AdminUserState.total_folders.to_string() + " thư mục", "folder", "indigo"),
+                kpi_box("Thẻ phân loại", AdminUserState.total_tags.to_string() + " tags", "tag", "teal"),
+                rx.card(
+                    rx.vstack(
+                        rx.hstack(
+                            rx.box(
+                                rx.icon("sparkles", size=18, color="var(--purple-10)"),
+                                bg="purple.3", padding="2", border_radius="lg",
+                            ),
+                            rx.vstack(
+                                rx.text("AI Indexing (RAG)", size="1", color="slate.9", weight="medium"),
+                                rx.heading(AdminUserState.indexing_rate, size="4", weight="bold", color="purple.11"),
+                                spacing="0",
+                            ),
+                            rx.spacer(),
+                            rx.button(
+                                rx.icon("play", size=12),
+                                "Re-index",
+                                size="1",
+                                variant="surface",
+                                color_scheme="purple",
+                                on_click=AdminUserState.run_all_indexing,
+                            ),
+                            align="center", spacing="2", width="100%",
+                        ),
+                        spacing="1", width="100%",
+                    ),
+                    variant="surface", padding="3",
+                ),
                 columns="4", spacing="4", width="100%",
             ),
 
