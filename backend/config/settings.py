@@ -5,6 +5,8 @@ Django settings for config project.
 import os
 from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 # Tự động nạp biến môi trường từ .env
 try:
     from dotenv import load_dotenv
@@ -12,8 +14,6 @@ try:
     load_dotenv(BASE_DIR / ".env")
 except Exception:
     pass
-
-BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-c&^g(wp7@krvcx7r=-5nczx(6ays5kx$(x(jup^u3bkm7-$^z('
 

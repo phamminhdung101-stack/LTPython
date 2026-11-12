@@ -61,7 +61,7 @@ class AIQuery(models.Model):
 
 class AIQuerySource(models.Model):
     """Bảng ai_query_sources trong PostgreSQL"""
-    query = models.ForeignKey(
+    query = models.OneToOneField(
         AIQuery,
         on_delete=models.CASCADE,
         db_column='query_id',
