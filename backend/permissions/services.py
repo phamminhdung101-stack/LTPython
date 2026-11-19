@@ -23,11 +23,15 @@ def can_user_access_document(user, document: Document) -> Tuple[bool, str]:
     if document.uploader_id == user.id:
         return True, "Tác giả của tài liệu."
 
-    # 3. Tài liệu công khai toàn trường đã duyệt
-    if document.status == Document.APPROVED and document.is_public:
+    # 3. Kiểm tra trạng thái phê duyệt: Người dùng thông thường chỉ được xem tài liệu đã duyệt
+    if document.status != Document.APPROVED:
+        return False, "Từ chối truy cập: Tài liệu chưa được phê duyệt hoặc đã bị từ chối."
+
+    # 4. Tài liệu công khai toàn trường đã duyệt
+    if document.is_public:
         return True, "Tài liệu công khai toàn trường."
 
-    # 4. Kiểm tra quyền cá nhân (USER)
+    # 5. Kiểm tra quyền cá nhân (USER)
     user_perm = DocumentPermission.objects.filter(
         document=document,
         permission_type=DocumentPermission.USER,
@@ -90,11 +94,15 @@ def can_user_download_document(user, document: Document) -> Tuple[bool, str]:
     if document.uploader_id == user.id:
         return True, "Tác giả của tài liệu."
 
-    # 3. Tài liệu công khai toàn trường
-    if document.status == Document.APPROVED and document.is_public:
+    # 3. Kiểm tra trạng thái: Người dùng thông thường chỉ được tải tài liệu đã duyệt
+    if document.status != Document.APPROVED:
+        return False, "Từ chối tải xuống: Tài liệu chưa được phê duyệt hoặc đã bị từ chối."
+
+    # 4. Tài liệu công khai toàn trường
+    if document.is_public:
         return True, "Tài liệu công khai toàn trường cho phép tải."
 
-    # 4. Kiểm tra quyền cá nhân (USER)
+    # 5. Kiểm tra quyền cá nhân (USER)
     user_perm = DocumentPermission.objects.filter(
         document=document,
         permission_type=DocumentPermission.USER,

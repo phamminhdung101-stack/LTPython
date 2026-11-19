@@ -40,38 +40,62 @@ class AuthState(rx.State):
     current_user_id: int = 0
     current_user_name: str = ""
     current_user_role: str = ""
+    current_user_class: str = ""
+    current_user_department: str = ""
+    auth_token: str = ""
 
     # --- Role & Route Guards ---
     def check_auth(self):
         """Guard bảo vệ: Bắt buộc đăng nhập trước khi xem nội dung."""
-        if not self.is_logged_in:
+        role = getattr(self, 'current_user_role', '')
+        name = getattr(self, 'current_user_name', '')
+        if not self.is_logged_in or not role or not name:
+            self.is_logged_in = False
+            self.current_user_id = 0
+            self.current_user_name = ""
+            self.current_user_role = ""
+            self.auth_token = ""
             return rx.redirect("/login")
 
     def check_admin_auth(self):
         """Guard bảo vệ: Chỉ cho phép quản trị viên (ADMIN)."""
-        if not self.is_logged_in or self.current_user_role != "ADMIN":
+        role = getattr(self, 'current_user_role', '')
+        name = getattr(self, 'current_user_name', '')
+        if not self.is_logged_in or role != "ADMIN" or not name:
+            self.is_logged_in = False
+            self.current_user_id = 0
+            self.current_user_name = ""
+            self.current_user_role = ""
+            self.auth_token = ""
             return rx.redirect("/login")
 
     def check_lecturer_auth(self):
         """Guard bảo vệ: Cho phép Giảng viên (LECTURER) hoặc Quản trị viên (ADMIN)."""
-        if not self.is_logged_in or self.current_user_role not in ("LECTURER", "ADMIN"):
+        role = getattr(self, 'current_user_role', '')
+        name = getattr(self, 'current_user_name', '')
+        if not self.is_logged_in or role not in ("LECTURER", "ADMIN") or not name:
+            self.is_logged_in = False
+            self.current_user_id = 0
+            self.current_user_name = ""
+            self.current_user_role = ""
+            self.auth_token = ""
             return rx.redirect("/login")
 
     def redirect_if_logged_in(self):
         """Nếu đã đăng nhập mà truy cập /login, điều hướng về trang theo vai trò thực tế."""
-        if self.is_logged_in:
-            if self.current_user_role == "ADMIN":
+        role = getattr(self, 'current_user_role', '')
+        name = getattr(self, 'current_user_name', '')
+        if self.is_logged_in and role and name:
+            if role == "ADMIN":
                 return rx.redirect("/admin/users")
-            elif self.current_user_role == "LECTURER":
+            elif role == "LECTURER":
                 return rx.redirect("/lecturer/dashboard")
             else:
                 return rx.redirect("/documents")
 
     def redirect_root(self):
-        """Chuyển hướng trang root '/' về /login khi chưa đăng nhập, hoặc trang chính theo vai trò."""
-        if not self.is_logged_in:
-            return rx.redirect("/login")
-        return self.redirect_if_logged_in()
+        """Chuyển hướng trang root '/' về /login khi mới vào chương trình."""
+        return rx.redirect("/login")
 
     # --- Login handlers ---
     def set_login_username(self, v: str):
@@ -115,6 +139,9 @@ class AuthState(rx.State):
                 if not role_val and isinstance(data.get("role"), dict):
                     role_val = data.get("role", {}).get("role_name")
                 self.current_user_role = str(role_val or "STUDENT").upper()
+                self.current_user_class = str(data.get("class_name") or "")
+                self.current_user_department = str(data.get("department_name") or "")
+                self.auth_token = str(res_data.get("token") or "")
                 self.login_error = ""
                 api_success = True
             elif resp.status_code == 401:
@@ -147,6 +174,13 @@ class AuthState(rx.State):
                     self.current_user_id = user.id
                     self.current_user_name = user.full_name or user.username
                     self.current_user_role = str(user.role.role_name if user.role else "STUDENT").upper()
+                    self.current_user_class = str(user.student_class.class_name if getattr(user, 'student_class', None) else "")
+                    self.current_user_department = str(user.department.department_name if getattr(user, 'department', None) else "")
+                    try:
+                        from accounts.authentication import generate_jwt_token
+                        self.auth_token = generate_jwt_token(user)
+                    except Exception:
+                        self.auth_token = f"orm_token_{user.id}"
                     self.login_error = ""
                     api_success = True
                 else:
@@ -182,10 +216,13 @@ class AuthState(rx.State):
         self.current_user_id = 0
         self.current_user_name = ""
         self.current_user_role = ""
+        self.current_user_class = ""
+        self.current_user_department = ""
+        self.auth_token = ""
         self.login_username = ""
         self.login_password = ""
         self.login_error = ""
-        return rx.redirect("/login")
+        return [rx.call_script("localStorage.clear(); sessionStorage.clear();"), rx.redirect("/login")]
 
     # --- Register handlers ---
     def set_reg_full_name(self, v: str):
@@ -269,6 +306,7 @@ def error_callout(message: str) -> rx.Component:
 
 def login_page() -> rx.Component:
     return rx.center(
+        rx.script("localStorage.clear();"),
         rx.card(
             rx.vstack(
                 # Logo
@@ -329,47 +367,49 @@ def login_page() -> rx.Component:
                     width="100%",
                 ),
 
-                # Form fields
-                rx.vstack(
+                # Form fields & Login button wrapped in form for Enter key support
+                rx.form(
                     rx.vstack(
-                        rx.text("Tên đăng nhập", size="2", weight="bold", color="slate.11"),
-                        auth_input(
-                            "Nhập username...",
-                            AuthState.login_username,
-                            AuthState.set_login_username,
-                            icon="user",
-                        ),
-                        spacing="1",
-                        width="100%",
-                    ),
-                    rx.vstack(
-                        rx.text("Mật khẩu", size="2", weight="bold", color="slate.11"),
-                        rx.input(
-                            rx.input.slot(rx.icon("lock", size=16, color="var(--slate-8)")),
-                            placeholder="Nhập mật khẩu...",
-                            value=AuthState.login_password,
-                            on_change=AuthState.set_login_password,
-                            type="password",
-                            size="3",
+                        rx.vstack(
+                            rx.text("Tên đăng nhập", size="2", weight="bold", color="slate.11"),
+                            auth_input(
+                                "Nhập username...",
+                                AuthState.login_username,
+                                AuthState.set_login_username,
+                                icon="user",
+                            ),
+                            spacing="1",
                             width="100%",
                         ),
-                        spacing="1",
+                        rx.vstack(
+                            rx.text("Mật khẩu", size="2", weight="bold", color="slate.11"),
+                            rx.input(
+                                rx.input.slot(rx.icon("lock", size=16, color="var(--slate-8)")),
+                                placeholder="Nhập mật khẩu...",
+                                value=AuthState.login_password,
+                                on_change=AuthState.set_login_password,
+                                type="password",
+                                size="3",
+                                width="100%",
+                            ),
+                            spacing="1",
+                            width="100%",
+                        ),
+                        rx.button(
+                            rx.icon("log-in", size=16),
+                            "Đăng nhập",
+                            size="3",
+                            width="100%",
+                            color_scheme="blue",
+                            variant="solid",
+                            loading=AuthState.login_loading,
+                            type="submit",
+                        ),
+                        spacing="3",
                         width="100%",
                     ),
-                    spacing="3",
+                    on_submit=AuthState.login,
                     width="100%",
-                ),
-
-                # Login button
-                rx.button(
-                    rx.icon("log-in", size=16),
-                    "Đăng nhập",
-                    size="3",
-                    width="100%",
-                    color_scheme="blue",
-                    variant="solid",
-                    loading=AuthState.login_loading,
-                    on_click=AuthState.login,
                 ),
 
                 # Link register

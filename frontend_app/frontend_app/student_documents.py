@@ -18,6 +18,7 @@ import reflex as rx
 from typing import Dict, Any
 from .common_components import student_page_wrapper
 from .data_store import GlobalDocState, FOLDER_TREE_DATA
+from .auth import AuthState, login_page
 
 
 # ─── 1. Component Cây Thư Mục Tương Tác (Task 2: Folder Tree) ─────────────────
@@ -187,6 +188,27 @@ def document_card(doc: Dict[str, Any]) -> rx.Component:
                 color="slate.10",
                 line_clamp=2,
                 line_height="1.4",
+            ),
+
+            # Trích đoạn khớp nội dung tìm kiếm (AI Search / Embedding / RAG)
+            rx.cond(
+                doc["matched_snippet"] != "",
+                rx.box(
+                    rx.hstack(
+                        rx.icon("sparkles", size=12, color="var(--blue-9)"),
+                        rx.text("Khớp nội dung: ", size="1", weight="bold", color="blue.11"),
+                        rx.text(doc["matched_snippet"], size="1", color="slate.11", font_style="italic"),
+                        align="center",
+                        spacing="1",
+                        wrap="wrap",
+                    ),
+                    bg="var(--blue-2)",
+                    padding="2",
+                    border_radius="md",
+                    border_left="3px solid var(--blue-9)",
+                    width="100%",
+                ),
+                rx.fragment(),
             ),
 
             # Tags chips
@@ -523,41 +545,13 @@ def student_documents_page() -> rx.Component:
         version_history_modal(),
         audit_log_modal(),
 
-        # Banner thông tin kịch bản Demo Task 2 & 3
-        rx.card(
-            rx.hstack(
-                rx.icon("info", size=20, color="var(--blue-10)"),
-                rx.vstack(
-                    rx.text.strong("Kịch bản Demo Phân quyền ACL (Task 2):", size="2", color="slate.12"),
-                    rx.text(
-                        "• Đang chọn tài khoản: ",
-                        rx.badge(GlobalDocState.current_user_name, color_scheme="blue", size="1"),
-                        " thuộc ",
-                        rx.badge(rx.cond(GlobalDocState.current_user_class != "", GlobalDocState.current_user_class, GlobalDocState.current_user_role), color_scheme="purple", size="1"),
-                        " — Sử dụng bộ chọn profile ở góc trên bên phải để hoán đổi giữa Sinh viên Lớp A và Lớp B để kiểm chứng phân quyền.",
-                        size="2",
-                        color="slate.11",
-                    ),
-                    spacing="1",
-                ),
-                align="center",
-                spacing="3",
-                width="100%",
-            ),
-            bg="var(--blue-2)",
-            border="1px solid var(--blue-5)",
-            padding="3.5",
-            margin_bottom="4",
-            width="100%",
-        ),
-
         # Thanh Tìm kiếm & Lọc Tag
         rx.card(
             rx.vstack(
                 rx.hstack(
                     rx.input(
                         rx.input.slot(rx.icon("search", size=16, color="var(--slate-8)")),
-                        placeholder="Tìm kiếm tài liệu theo tiêu đề, môn học, mã môn (IT101, CSDL...)...",
+                        placeholder="Tìm kiếm tài liệu theo tiêu đề, môn học (Java, CSDL, Kinh tế vi mô...)...",
                         value=GlobalDocState.search_query,
                         on_change=GlobalDocState.set_search_query,
                         size="3",
@@ -602,6 +596,32 @@ def student_documents_page() -> rx.Component:
         rx.hstack(
             folder_tree_sidebar(),
             rx.vstack(
+                # Thông báo lỗi kết nối nếu có (Requirement 5: Hiển thị lỗi phù hợp, không hiển thị demo data)
+                rx.cond(
+                    GlobalDocState.load_error != "",
+                    rx.callout.root(
+                        rx.callout.icon(rx.icon("alert-triangle")),
+                        rx.hstack(
+                            rx.callout.text(GlobalDocState.load_error),
+                            rx.spacer(),
+                            rx.button(
+                                rx.icon("refresh-cw", size=13),
+                                "Thử lại",
+                                size="1",
+                                variant="surface",
+                                color_scheme="red",
+                                on_click=GlobalDocState.load_documents,
+                            ),
+                            align="center",
+                            width="100%",
+                        ),
+                        color_scheme="red",
+                        variant="soft",
+                        width="100%",
+                    ),
+                    rx.fragment(),
+                ),
+
                 # Thanh thống kê kết quả lọc
                 rx.hstack(
                     rx.heading("Tài Liệu Học Phần Khả Dụng", size="4", weight="bold", color="slate.12"),
@@ -635,9 +655,36 @@ def student_documents_page() -> rx.Component:
                     ),
                     rx.center(
                         rx.vstack(
-                            rx.icon("folder-open", size=48, color="var(--slate-8)"),
-                            rx.text("Không có tài liệu nào phù hợp với thư mục hoặc bộ lọc hiện tại.", size="3", color="slate.9"),
-                            rx.button("Đặt lại bộ lọc", on_click=GlobalDocState.select_tree_filter("RESET", ""), color_scheme="blue", variant="surface"),
+                            rx.icon(
+                                rx.cond(GlobalDocState.load_error != "", "alert-triangle", "folder-open"),
+                                size=48,
+                                color=rx.cond(GlobalDocState.load_error != "", "var(--red-9)", "var(--slate-8)"),
+                            ),
+                            rx.text(
+                                rx.cond(
+                                    GlobalDocState.load_error != "",
+                                    GlobalDocState.load_error,
+                                    "Không có tài liệu nào phù hợp với thư mục hoặc bộ lọc hiện tại.",
+                                ),
+                                size="3",
+                                color=rx.cond(GlobalDocState.load_error != "", "red.11", "slate.9"),
+                                text_align="center",
+                            ),
+                            rx.hstack(
+                                rx.cond(
+                                    GlobalDocState.load_error != "",
+                                    rx.button(
+                                        rx.icon("refresh-cw", size=14),
+                                        "Tải lại dữ liệu",
+                                        on_click=GlobalDocState.load_documents,
+                                        color_scheme="red",
+                                        variant="surface",
+                                    ),
+                                    rx.fragment(),
+                                ),
+                                rx.button("Đặt lại bộ lọc", on_click=GlobalDocState.select_tree_filter("RESET", ""), color_scheme="blue", variant="surface"),
+                                spacing="3",
+                            ),
                             align="center",
                             spacing="3",
                             padding_y="12",
@@ -657,4 +704,8 @@ def student_documents_page() -> rx.Component:
         width="100%",
     )
 
-    return student_page_wrapper(content, active_route="/documents")
+    return rx.cond(
+        AuthState.is_logged_in & (AuthState.current_user_role != ""),
+        student_page_wrapper(content, active_route="/documents"),
+        login_page(),
+    )

@@ -48,7 +48,7 @@ def run_tests():
     admin_user = User.objects.filter(role__role_name='ADMIN').first()
     lecturer_user = User.objects.filter(role__role_name='LECTURER').first()
     student_user = User.objects.filter(role__role_name='STUDENT').first()
-    student2_user = User.objects.filter(role__role_name='STUDENT').exclude(user_id=student_user.user_id).first()
+    student2_user = User.objects.filter(role__role_name='STUDENT').exclude(id=student_user.id).first()
 
     assert admin_user, "Không tìm thấy tài khoản ADMIN trong DB"
     assert lecturer_user, "Không tìm thấy tài khoản LECTURER trong DB"

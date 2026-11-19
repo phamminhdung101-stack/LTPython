@@ -13,7 +13,8 @@ import dataclasses
 from datetime import datetime
 from typing import List, Dict, Any
 import reflex as rx
-from .common_components import lecturer_page_wrapper
+from .common_components import lecturer_page_wrapper, status_badge
+from .auth import AuthState, login_page
 
 
 # ─── Dataclass Models ────────────────────────────────────────────────────────
@@ -44,11 +45,12 @@ class LecturerDoc:
     title: str = ""
     subject_code: str = ""
     subject_name: str = ""
-    faculty: str = "CNTT"
+    faculty: str = "Cong nghe thong tin"
     folder_name: str = ""
     doc_type: str = "TEXTBOOK"  # "TEXTBOOK", "SLIDE", "EXAM", "EXERCISE", "REFERENCE"
     type_label: str = "Giáo trình"
     type_color: str = "blue"
+    status: str = "APPROVED"  # "PENDING", "APPROVED", "REJECTED"
     current_version: str = "v1.0"
     file_name: str = ""
     file_size: str = "12.4 MB"
@@ -65,11 +67,13 @@ class LecturerDoc:
 
 SUBJECT_LIST = [
     {"code": "ALL", "name": "Tất cả môn học"},
-    {"code": "IT202", "name": "IT202 - Cấu trúc dữ liệu & GT"},
-    {"code": "IT305", "name": "IT305 - Cơ sở dữ liệu"},
-    {"code": "IT101", "name": "IT101 - Nhập môn lập trình"},
-    {"code": "IT410", "name": "IT410 - Lập trình Web"},
-    {"code": "IT420", "name": "IT420 - Kiến trúc phần mềm"},
+    {"code": "Lap trinh Java", "name": "Lap trinh Java"},
+    {"code": "Co so du lieu", "name": "Co so du lieu"},
+    {"code": "Mang may tinh", "name": "Mang may tinh"},
+    {"code": "Kinh te vi mo", "name": "Kinh te vi mo"},
+    {"code": "Ke toan dai cuong", "name": "Ke toan dai cuong"},
+    {"code": "Tieng Anh chuyen nganh", "name": "Tieng Anh chuyen nganh"},
+    {"code": "Ngu phap co ban", "name": "Ngu phap co ban"},
 ]
 
 DOC_TYPES_SELECT = [
@@ -88,10 +92,13 @@ class LecturerDocState(rx.State):
 
     documents: List[LecturerDoc] = []
 
-    def load_documents(self):
+    async def load_documents(self):
         try:
             import httpx
-            resp = httpx.get("http://127.0.0.1:8000/api/documents/", timeout=3.0)
+            from .auth import AuthState
+            auth = await self.get_state(AuthState)
+            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+            resp = httpx.get("http://127.0.0.1:8000/api/documents/", headers=headers, timeout=4.0)
             if resp.status_code == 200:
                 raw_docs = resp.json().get("documents") or resp.json().get("data") or []
                 loaded = []
@@ -99,7 +106,8 @@ class LecturerDocState(rx.State):
                     d_id = str(d.get("id") or d.get("document_id"))
                     title = d.get("title", "")
                     s_name = d.get("subject_name") or d.get("subject", {}).get("subject_name", "")
-                    dept_name = d.get("department_name") or "CNTT"
+                    dept_name = d.get("department_name") or "Cong nghe thong tin"
+                    status = str(d.get("status") or "APPROVED").upper()
                     views = int(d.get("view_count", 0))
                     downloads = int(d.get("download_count", 0))
                     is_pub = bool(d.get("is_public", True))
@@ -111,13 +119,14 @@ class LecturerDocState(rx.State):
                     loaded.append(LecturerDoc(
                         id=d_id,
                         title=title,
-                        subject_code=f"SUB_{d.get('subject_id', 1)}",
+                        subject_code=s_name,
                         subject_name=s_name,
                         faculty=dept_name,
                         folder_name=f_name,
                         doc_type="TEXTBOOK",
                         type_label="Giáo trình",
                         type_color="blue",
+                        status=status,
                         current_version=str(d.get("latest_version") or "v1.0"),
                         file_name=fname,
                         file_size=fsize,
@@ -135,6 +144,60 @@ class LecturerDocState(rx.State):
                 return
         except Exception:
             pass
+
+        # ORM Fallback using asyncio.to_thread
+        try:
+            import os, sys, asyncio
+            def _fetch_lecturer_docs():
+                backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+                if backend_dir not in sys.path:
+                    sys.path.insert(0, backend_dir)
+                os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+                import django
+                django.setup()
+                from documents.models import Document as DjDoc
+                docs = DjDoc.objects.select_related('subject', 'subject__department', 'folder').prefetch_related('tags').all().order_by('-id')
+                res = []
+                for d in docs:
+                    d_id = str(d.id)
+                    s_name = d.subject.subject_name if d.subject else ""
+                    dept_name = d.subject.department.department_name if (d.subject and d.subject.department) else "Cong nghe thong tin"
+                    f_name = d.folder.folder_name if d.folder else "Giáo trình & Học liệu"
+                    status = str(d.status).upper()
+                    created = d.created_at.strftime('%Y-%m-%d %H:%M') if d.created_at else ""
+                    latest = d.latest_version
+                    fname = os.path.basename(str(latest.file)) if (latest and latest.file) else f"document_{d_id}.pdf"
+                    fsize = "2.0 MB"
+                    res.append(LecturerDoc(
+                        id=d_id,
+                        title=d.title,
+                        subject_code=s_name,
+                        subject_name=s_name,
+                        faculty=dept_name,
+                        folder_name=f_name,
+                        doc_type="TEXTBOOK",
+                        type_label="Giáo trình",
+                        type_color="blue",
+                        status=status,
+                        current_version=f"v{latest.version_number}.0" if latest else "v1.0",
+                        file_name=fname,
+                        file_size=fsize,
+                        downloads=int(d.download_count or 0),
+                        views=int(d.view_count or 0),
+                        is_public=bool(d.is_public),
+                        permission_summary="Công khai toàn trường" if d.is_public else "Nội bộ",
+                        updated_at=created,
+                        description=d.description or "",
+                        tags=[t.tag_name for t in d.tags.all()] if hasattr(d, 'tags') else ["học liệu"],
+                        versions=[DocVersion("v1.0", fname, "Bản khởi tạo", created, fsize)],
+                        permissions=[DocPermission("p1", "PUBLIC", "Toàn trường", True, True, False)],
+                    ))
+                return res
+
+            self.documents = await asyncio.to_thread(_fetch_lecturer_docs)
+            return
+        except Exception:
+            self.documents = []
     search_query: str = ""
     selected_subject: str = "ALL"
     selected_type: str = "ALL"
@@ -144,7 +207,7 @@ class LecturerDocState(rx.State):
     is_create_mode: bool = False
     edit_doc_id: str = ""
     edit_title: str = ""
-    edit_subject: str = "IT202"
+    edit_subject: str = "Lap trinh Java"
     edit_folder: str = "Giáo trình chính thức"
     edit_type: str = "TEXTBOOK"
     edit_desc: str = ""
@@ -216,7 +279,7 @@ class LecturerDocState(rx.State):
         self.is_create_mode = True
         self.edit_doc_id = ""
         self.edit_title = ""
-        self.edit_subject = "IT202"
+        self.edit_subject = "Lap trinh Java"
         self.edit_folder = "Giáo trình chính thức"
         self.edit_type = "TEXTBOOK"
         self.edit_desc = ""
@@ -281,7 +344,7 @@ class LecturerDocState(rx.State):
                 title=self.edit_title,
                 subject_code=self.edit_subject,
                 subject_name=subj_name,
-                faculty="CNTT",
+                faculty="Cong nghe thong tin",
                 folder_name=self.edit_folder,
                 doc_type=self.edit_type,
                 type_label=type_info["label"],
@@ -533,7 +596,11 @@ def doc_table_row(doc: LecturerDoc) -> rx.Component:
                 align="center",
             ),
         ),
-        # 3. Phân quyền
+        # 3. Trạng thái phê duyệt
+        rx.table.cell(
+            status_badge(doc.status),
+        ),
+        # 4. Phân quyền
         rx.table.cell(
             rx.vstack(
                 rx.badge(doc.permission_summary, color_scheme="gray", variant="surface", size="1"),
@@ -660,11 +727,13 @@ def edit_create_modal() -> rx.Component:
                         rx.select.root(
                             rx.select.trigger(width="100%", size="2"),
                             rx.select.content(
-                                rx.select.item("IT202 - Cấu trúc dữ liệu & GT", value="IT202"),
-                                rx.select.item("IT305 - Cơ sở dữ liệu", value="IT305"),
-                                rx.select.item("IT101 - Nhập môn lập trình", value="IT101"),
-                                rx.select.item("IT410 - Lập trình Web", value="IT410"),
-                                rx.select.item("IT420 - Kiến trúc phần mềm", value="IT420"),
+                                rx.select.item("Lap trinh Java", value="Lap trinh Java"),
+                                rx.select.item("Co so du lieu", value="Co so du lieu"),
+                                rx.select.item("Mang may tinh", value="Mang may tinh"),
+                                rx.select.item("Kinh te vi mo", value="Kinh te vi mo"),
+                                rx.select.item("Ke toan dai cuong", value="Ke toan dai cuong"),
+                                rx.select.item("Tieng Anh chuyen nganh", value="Tieng Anh chuyen nganh"),
+                                rx.select.item("Ngu phap co ban", value="Ngu phap co ban"),
                             ),
                             value=LecturerDocState.edit_subject,
                             on_change=LecturerDocState.set_edit_subject,
@@ -1163,12 +1232,14 @@ def delete_confirm_modal() -> rx.Component:
 # ─── Main Page ───────────────────────────────────────────────────────────────
 
 def lecturer_documents_page() -> rx.Component:
-    return lecturer_page_wrapper(
-        rx.vstack(
-            # ── Header Bar ──
-            rx.hstack(
-                rx.vstack(
-                    rx.heading("Quản Lý Kho Tài Liệu Phụ Trách", size="6", weight="bold", color="slate.12"),
+    return rx.cond(
+        AuthState.is_logged_in & (AuthState.current_user_role != ""),
+        lecturer_page_wrapper(
+            rx.vstack(
+                # ── Header Bar ──
+                rx.hstack(
+                    rx.vstack(
+                        rx.heading("Quản Lý Kho Tài Liệu Phụ Trách", size="6", weight="bold", color="slate.12"),
                     rx.text("Danh mục học liệu cá nhân và bộ môn: Thêm mới, chỉnh sửa, phân quyền và quản lý phiên bản", size="2", color="slate.9"),
                     spacing="1",
                 ),
@@ -1281,11 +1352,13 @@ def lecturer_documents_page() -> rx.Component:
                         rx.select.trigger(width="240px", size="2"),
                         rx.select.content(
                             rx.select.item("Tất cả môn học", value="ALL"),
-                            rx.select.item("IT202 - Cấu trúc dữ liệu & GT", value="IT202"),
-                            rx.select.item("IT305 - Cơ sở dữ liệu", value="IT305"),
-                            rx.select.item("IT101 - Nhập môn lập trình", value="IT101"),
-                            rx.select.item("IT410 - Lập trình Web", value="IT410"),
-                            rx.select.item("IT420 - Kiến trúc phần mềm", value="IT420"),
+                            rx.select.item("Lap trinh Java", value="Lap trinh Java"),
+                            rx.select.item("Co so du lieu", value="Co so du lieu"),
+                            rx.select.item("Mang may tinh", value="Mang may tinh"),
+                            rx.select.item("Kinh te vi mo", value="Kinh te vi mo"),
+                            rx.select.item("Ke toan dai cuong", value="Ke toan dai cuong"),
+                            rx.select.item("Tieng Anh chuyen nganh", value="Tieng Anh chuyen nganh"),
+                            rx.select.item("Ngu phap co ban", value="Ngu phap co ban"),
                         ),
                         value=LecturerDocState.selected_subject,
                         on_change=LecturerDocState.set_selected_subject,
@@ -1318,6 +1391,7 @@ def lecturer_documents_page() -> rx.Component:
                         rx.table.row(
                             rx.table.column_header_cell("Thông tin tài liệu"),
                             rx.table.column_header_cell("Phiên bản"),
+                            rx.table.column_header_cell("Trạng thái"),
                             rx.table.column_header_cell("Phạm vi quyền"),
                             rx.table.column_header_cell("Lượt xem / Tải"),
                             rx.table.column_header_cell("Thao tác"),
@@ -1346,4 +1420,6 @@ def lecturer_documents_page() -> rx.Component:
             width="100%",
         ),
         current_route="/lecturer/documents",
-    )
+    ),
+    login_page(),
+)

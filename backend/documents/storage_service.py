@@ -197,8 +197,9 @@ class LocalDocumentStorageService:
 
         # Chống path traversal
         clean_key = object_key.strip().replace('\\', '/')
-        if '..' in clean_key or clean_key.startswith('/'):
+        if '..' in clean_key:
             raise SuspiciousFileOperation('Phát hiện đường dẫn không an toàn (Path Traversal).')
+        clean_key = clean_key.lstrip('/')
 
         try:
             full_path = Path(self.storage.path(clean_key)).resolve()

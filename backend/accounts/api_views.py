@@ -34,9 +34,36 @@ def _json_ok(data=None, message: str = 'Thành công', status: int = 200) -> Jso
     payload = {'status': 'ok', 'message': message}
     if data is not None:
         payload['data'] = data
+        if isinstance(data, dict):
+            for k in ('database', 'user', 'total'):
+                if k in data and k not in payload:
+                    payload[k] = data[k]
     res = JsonResponse(payload, status=status, json_dumps_params={'ensure_ascii': False})
     res.data = payload
     return res
+
+
+@require_http_methods(["GET"])
+def health_api(request):
+    """
+    API Health Check: kiểm tra kết nối hệ thống và cơ sở dữ liệu PostgreSQL.
+    """
+    from django.db import connection
+    db_connected = False
+    try:
+        connection.ensure_connection()
+        db_connected = True
+    except Exception:
+        pass
+    data = {
+        'status': 'healthy',
+        'database': {
+            'connected': db_connected,
+            'engine': connection.settings_dict.get('ENGINE', ''),
+            'name': connection.settings_dict.get('NAME', ''),
+        }
+    }
+    return _json_ok(data)
 
 
 def _get_authenticated_user(request):
@@ -203,12 +230,15 @@ def user_api(request):
             'created_at': u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '',
         } for u in qs[:100]]
 
-        return JsonResponse({
+        payload = {
             'status': 'ok',
             'users': data,
             'data': data,
             'total': len(data),
-        }, status=200, json_dumps_params={'ensure_ascii': False})
+        }
+        res = JsonResponse(payload, status=200, json_dumps_params={'ensure_ascii': False})
+        res.data = payload
+        return res
 
     # POST: Tạo người dùng mới
     if not (user and getattr(user, 'is_admin', False)):

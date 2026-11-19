@@ -20,6 +20,7 @@ ALLOWED_EXTENSIONS = {
     '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     '.zip': 'application/zip',
+    '.txt': 'text/plain',
 }
 
 # Hỗ trợ thêm các MIME type phụ phụ thuộc vào hệ điều hành / browser
@@ -27,6 +28,32 @@ MIME_ALIASES = {
     'application/x-zip-compressed': '.zip',
     'application/octet-stream': None,  # Cho phép nếu đuôi file hợp lệ
 }
+
+
+def check_magic_bytes(file_obj, ext: str) -> bool:
+    """
+    Kiểm tra magic bytes của file nhằm phát hiện trường hợp giả mạo định dạng file.
+    """
+    try:
+        header = b''
+        if hasattr(file_obj, 'seek'):
+            file_obj.seek(0)
+            header = file_obj.read(16)
+            file_obj.seek(0)
+        elif isinstance(file_obj, (bytes, bytearray)):
+            header = bytes(file_obj[:16])
+        else:
+            return True
+
+        if ext == '.pdf':
+            return header.startswith(b'%PDF-')
+        elif ext in ('.docx', '.pptx', '.xlsx', '.zip'):
+            return header.startswith(b'PK')
+        elif ext == '.txt':
+            return b'\x00' not in header
+        return True
+    except Exception:
+        return True
 
 
 def get_max_upload_size() -> int:
@@ -106,6 +133,10 @@ def validate_file_upload(file_obj, filename: Optional[str] = None) -> Tuple[bool
     if file_size == 0:
         return False, "File rỗng (0 bytes). Vui lòng chọn một file hợp lệ.", {}
 
+    # 3. Kiểm tra Magic bytes (chống file giả mạo định dạng)
+    if not check_magic_bytes(file_obj, ext_lower):
+        return False, f"Nội dung file không khớp với định dạng '{ext}' (Magic bytes mismatch).", {}
+
     # 3. Xác định Content-Type chuẩn
     content_type = getattr(file_obj, 'content_type', None) or ALLOWED_EXTENSIONS.get(ext_lower, 'application/octet-stream')
 
@@ -114,9 +145,13 @@ def validate_file_upload(file_obj, filename: Optional[str] = None) -> Tuple[bool
 
     metadata = {
         'filename': name,
+        'original_filename': name,
         'extension': ext_lower,
+        'file_ext': ext_lower,
+        'file_type': ext_lower.replace('.', '').upper(),
         'file_size': file_size,
         'content_type': content_type,
+        'mime_type': content_type,
         'checksum_sha256': checksum,
     }
     return True, None, metadata

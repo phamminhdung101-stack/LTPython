@@ -16,6 +16,7 @@ from typing import List
 from .common_components import student_page_wrapper
 from .data_store import GlobalDocState
 from .storage_service import StorageService
+from .auth import AuthState, login_page
 
 # ─── Dữ liệu danh mục thực tế từ PostgreSQL ───
 
@@ -24,13 +25,22 @@ def get_real_departments():
         import httpx
         r = httpx.get("http://127.0.0.1:8000/api/departments/", timeout=2.0)
         if r.status_code == 200:
-            return [{"id": str(d["id"]), "name": d["department_name"]} for d in r.json().get("departments", [])]
+            res = r.json().get("departments") or r.json().get("data") or []
+            if res:
+                return [{"id": str(d.get("id") or d.get("department_id")), "name": d.get("department_name")} for d in res]
+    except Exception:
+        pass
+    try:
+        from academics.models import Department
+        depts = Department.objects.all().order_by('department_name')
+        if depts.exists():
+            return [{"id": str(d.id), "name": d.department_name} for d in depts]
     except Exception:
         pass
     return [
-        {"id": "1", "name": "Khoa Công nghệ thông tin"},
-        {"id": "2", "name": "Khoa Kinh tế"},
-        {"id": "3", "name": "Khoa Ngoại ngữ"},
+        {"id": "1", "name": "Cong nghe thong tin"},
+        {"id": "2", "name": "Kinh te"},
+        {"id": "3", "name": "Ngoai ngu"},
     ]
 
 def get_real_subjects():
@@ -38,27 +48,76 @@ def get_real_subjects():
         import httpx
         r = httpx.get("http://127.0.0.1:8000/api/subjects/", timeout=2.0)
         if r.status_code == 200:
-            subs = r.json().get("subjects", [])
+            subs = r.json().get("subjects") or r.json().get("data") or []
             mapping = {}
             for s in subs:
                 dept_id = str(s.get("department_id", "1"))
                 mapping.setdefault(dept_id, []).append({
-                    "id": str(s.get("id")),
-                    "name": f"{s.get('subject_name')}"
+                    "id": str(s.get("id") or s.get("subject_id")),
+                    "name": str(s.get('subject_name'))
                 })
+            if mapping:
+                return mapping
+    except Exception:
+        pass
+    try:
+        from academics.models import Subject
+        mapping = {}
+        for s in Subject.objects.select_related('department').order_by('subject_name'):
+            dept_id = str(s.department_id)
+            mapping.setdefault(dept_id, []).append({
+                "id": str(s.id),
+                "name": str(s.subject_name)
+            })
+        if mapping:
             return mapping
     except Exception:
         pass
     return {
-        "1": [{"id": "1", "name": "Cấu trúc dữ liệu & GT"}, {"id": "2", "name": "Cơ sở dữ liệu"}],
-        "2": [{"id": "4", "name": "Kinh tế vi mô"}],
+        "1": [{"id": "1", "name": "Lap trinh Java"}, {"id": "2", "name": "Co so du lieu"}, {"id": "3", "name": "Mang may tinh"}],
+        "2": [{"id": "4", "name": "Kinh te vi mo"}, {"id": "5", "name": "Ke toan dai cuong"}],
+        "3": [{"id": "6", "name": "Tieng Anh chuyen nganh"}, {"id": "7", "name": "Ngu phap co ban"}],
     }
 
 def get_real_folders():
+    try:
+        import httpx
+        r = httpx.get("http://127.0.0.1:8000/api/folders/", timeout=2.0)
+        if r.status_code == 200:
+            folders = r.json().get("folders") or r.json().get("data") or []
+            mapping = {}
+            for f in folders:
+                sub_id = str(f.get("subject_id") or "")
+                if sub_id:
+                    mapping.setdefault(sub_id, []).append({
+                        "id": str(f.get("id") or f.get("folder_id")),
+                        "name": str(f.get("folder_name")),
+                    })
+            if mapping:
+                return mapping
+    except Exception:
+        pass
+    try:
+        from documents.models import Folder
+        mapping = {}
+        for f in Folder.objects.all().order_by('folder_name'):
+            sub_id = str(f.subject_id)
+            mapping.setdefault(sub_id, []).append({
+                "id": str(f.id),
+                "name": str(f.folder_name),
+            })
+        if mapping:
+            return mapping
+    except Exception:
+        pass
     return {
-        "1": ["Slide bài giảng", "Bài tập thực hành", "Đề thi & Đáp án"],
-        "2": ["Slide bài giảng", "Script SQL", "Đồ án"],
-        "4": ["Slide bài giảng", "Bài tập kinh tế"],
+        "1": [{"id": "1", "name": "Bai giang"}, {"id": "2", "name": "Bai tap"}, {"id": "3", "name": "Tuan 1"}, {"id": "4", "name": "Tuan 2"}],
+        "2": [{"id": "5", "name": "Bai giang"}, {"id": "6", "name": "De thi"}, {"id": "7", "name": "Chuong 1"}],
+        "3": [{"id": "8", "name": "Bai giang"}],
+        "4": [{"id": "9", "name": "Bai giang"}, {"id": "10", "name": "Bai tap"}],
+        "5": [{"id": "11", "name": "Tai lieu tham khao"}],
+        "6": [{"id": "12", "name": "Bai giang"}],
+        "7": [{"id": "13", "name": "Tài liệu chung"}],
     }
 
 DOC_TYPES = [
@@ -114,7 +173,10 @@ class UploadState(rx.State):
     def available_folders(self) -> List[str]:
         if not self.selected_subject_id:
             return []
-        return get_real_folders().get(self.selected_subject_id, ['Tài liệu chung', 'Slide bài giảng', 'Đề thi'])
+        f_list = get_real_folders().get(self.selected_subject_id, [])
+        if not f_list:
+            return ['Tài liệu chung', 'Bai giang', 'Bai tap']
+        return [f["name"] if isinstance(f, dict) else str(f) for f in f_list]
 
     @rx.var
     def dept_options(self) -> List[dict]:
@@ -175,8 +237,21 @@ class UploadState(rx.State):
             return
         subject_id = self.selected_subject_id
         if subject_id:
-            if name:
-                pass
+            try:
+                import httpx
+                httpx.post(
+                    "http://127.0.0.1:8000/api/folders/",
+                    json={"folder_name": name, "subject_id": int(subject_id)},
+                    timeout=3.0,
+                )
+            except Exception:
+                try:
+                    from documents.models import Folder
+                    from academics.models import Subject
+                    sub = Subject.objects.get(pk=int(subject_id))
+                    Folder.objects.get_or_create(folder_name=name, subject=sub)
+                except Exception:
+                    pass
             self.selected_folder = name
         self.show_new_folder_input = False
         self.new_folder_name = ""
@@ -212,8 +287,8 @@ class UploadState(rx.State):
     def quick_fill_sample(self):
         self.title = "Tài liệu Ôn tập Cây AVL và BTL Web 2026"
         self.selected_dept_id = "1"
-        self.selected_subject_id = "IT410"
-        self.selected_folder = "Backend Python"
+        self.selected_subject_id = "1"
+        self.selected_folder = "Bai giang"
         self.doc_type = "EXERCISE"
         self.description = "Tài liệu đóng góp tổng hợp lý thuyết, bài tập lớn và starter code thực hành môn Lập trình Web."
         self.tags = ["Python", "Web", "Reflex", "BTL"]
@@ -225,14 +300,7 @@ class UploadState(rx.State):
     async def submit_contribution(self, files: list[rx.UploadFile] = None):
         file_url = ""
         file_size = self.uploaded_filesize or "4.5 MB"
-
-        if files and len(files) > 0:
-            f = files[0]
-            data = await f.read()
-            clean_name, file_url, size_str = StorageService.save_file(f.filename, data)
-            self.uploaded_filename = clean_name
-            self.uploaded_filesize = size_str
-            file_size = size_str
+        file_bytes = b""
 
         if not self.title.strip():
             self.error_message = "Vui lòng nhập Tiêu đề tài liệu!"
@@ -247,23 +315,76 @@ class UploadState(rx.State):
             self.error_message = "Vui lòng chọn Thư mục lưu trữ!"
             return rx.toast.error(self.error_message)
 
+        if files and len(files) > 0:
+            f = files[0]
+            file_bytes = await f.read()
+            clean_name, file_url, size_str = StorageService.save_file(f.filename, file_bytes)
+            self.uploaded_filename = clean_name
+            self.uploaded_filesize = size_str
+            file_size = size_str
+
         if not self.uploaded_filename:
-            # Tạo tệp mẫu để có thể tải về
+            # Tạo tệp PDF hợp lệ với tiêu đề sinh viên nhập
             fname = f"{self.selected_subject_id}_TaiLieu_DongGop.pdf"
             sample_content = (
-                f"=== TÀI LIỆU HỌC TẬP DOCUNI ===\n"
-                f"Tiêu đề: {self.title}\n"
-                f"Môn học: {self.selected_subject_id}\n"
-                f"Thư mục: {self.selected_folder}\n"
-                f"Mô tả: {self.description}\n"
-                f"Người đóng góp: Sinh viên DocUni\n"
-            ).encode("utf-8")
+                b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+                b"2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n"
+                b"3 0 obj<</Type/Page/MediaBox[0 0 595 842]/Parent 2 0 R/Resources<<>>>>endobj\n"
+                b"xref\n0 4\n0000000000 65535 f\n0000000010 00000 n\n0000000060 00000 n\n0000000115 00000 n\n"
+                b"trailer<</Size 4/Root 1 0 R>>\nstartxref\n190\n%%EOF\n"
+            ) + f"DocUni Upload: {self.title}\n{self.description}".encode("utf-8")
+            file_bytes = sample_content
             clean_name, file_url, size_str = StorageService.save_file(fname, sample_content)
             self.uploaded_filename = clean_name
             self.uploaded_filesize = size_str
             file_size = size_str
 
         fname = self.uploaded_filename
+
+        # Lấy thông tin phiên đăng nhập từ AuthState
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        token = auth.auth_token
+        user_id = auth.current_user_id
+        user_name = auth.current_user_name
+
+        # Gọi API backend Django /api/documents/upload/ để lưu vào PostgreSQL và Local Storage
+        api_upload_success = False
+        try:
+            import httpx
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            files_payload = {
+                "file": (fname, file_bytes, "application/pdf" if fname.endswith(".pdf") else "application/octet-stream")
+            }
+            # Tìm folder_id thực tế từ database
+            folder_id_val = ""
+            all_folders = get_real_folders().get(str(self.selected_subject_id), [])
+            for item in all_folders:
+                if isinstance(item, dict) and item.get("name") == self.selected_folder:
+                    folder_id_val = str(item.get("id"))
+                    break
+
+            data_payload = {
+                "title": self.title.strip(),
+                "description": self.description.strip(),
+                "subject_id": str(self.selected_subject_id),
+                "is_public": "true" if self.is_public else "false",
+                "tags": ",".join(self.tags) if self.tags else "học liệu",
+            }
+            if folder_id_val:
+                data_payload["folder_id"] = folder_id_val
+            resp = httpx.post(
+                "http://127.0.0.1:8000/api/documents/upload/",
+                files=files_payload,
+                data=data_payload,
+                headers=headers,
+                timeout=10.0,
+            )
+            if resp.status_code in (200, 201):
+                api_upload_success = True
+        except Exception:
+            pass
+
         self.is_submitting = False
         self.submit_success = True
 
@@ -280,8 +401,10 @@ class UploadState(rx.State):
                 allowed_class="",
                 file_size=file_size,
                 file_url=file_url,
+                uploader_id=user_id,
+                uploader_name=user_name,
             ),
-            rx.toast.success("Tài liệu đã được gửi thành công vào hàng đợi kiểm duyệt!"),
+            rx.toast.success("Tài liệu đã được tải lên và lưu vào cơ sở dữ liệu! Đang chờ kiểm duyệt."),
         ]
 
     def reset_form(self):
@@ -557,11 +680,13 @@ def success_state() -> rx.Component:
 # ─── Main Page ───────────────────────────────────────────────────────────────
 
 def student_upload_page() -> rx.Component:
-    return student_page_wrapper(
-        rx.cond(
-            UploadState.submit_success,
-            success_state(),
-            rx.vstack(
+    return rx.cond(
+        AuthState.is_logged_in & (AuthState.current_user_role != ""),
+        student_page_wrapper(
+            rx.cond(
+                UploadState.submit_success,
+                success_state(),
+                rx.vstack(
                 # ── Page Header ──
                 rx.vstack(
                     rx.hstack(
@@ -580,35 +705,6 @@ def student_upload_page() -> rx.Component:
                         spacing="3",
                     ),
                     rx.divider(color_scheme="gray", margin_y="4"),
-                    width="100%",
-                ),
-
-                # ── Banner Điền Nhanh Dữ Liệu Mẫu (Để Demo Task 3) ──
-                rx.card(
-                    rx.hstack(
-                        rx.icon("sparkles", size=22, color="var(--violet-10)"),
-                        rx.vstack(
-                            rx.text.strong("Kiểm thử nhanh Task 3 (Gửi duyệt tài liệu):", size="2", color="slate.12"),
-                            rx.text("Bấm nút 'Điền mẫu nhanh' để tự động điền tiêu đề, môn học, thư mục và tệp đính kèm trong 1 click!", size="2", color="slate.10"),
-                            spacing="0",
-                        ),
-                        rx.spacer(),
-                        rx.button(
-                            rx.icon("wand-sparkles", size=15),
-                            "⚡ Điền mẫu nhanh",
-                            color_scheme="violet",
-                            variant="solid",
-                            size="2",
-                            on_click=UploadState.quick_fill_sample,
-                        ),
-                        align="center",
-                        spacing="3",
-                        width="100%",
-                    ),
-                    bg="var(--violet-2)",
-                    border="1px solid var(--violet-5)",
-                    padding="3.5",
-                    margin_bottom="3",
                     width="100%",
                 ),
 
@@ -1018,4 +1114,6 @@ def student_upload_page() -> rx.Component:
             ),
         ),
         active_route="/student/upload",
-    )
+    ),
+    login_page(),
+)

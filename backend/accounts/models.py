@@ -23,6 +23,10 @@ class Role(models.Model):
     def __str__(self):
         return self.get_role_name_display()
 
+    @property
+    def role_id(self):
+        return self.id
+
 
 class UserManager(BaseUserManager):
     def create_user(self, username, full_name, role, password=None, **extra_fields):

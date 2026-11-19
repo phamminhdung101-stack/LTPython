@@ -7,23 +7,40 @@ Bộ chuyển đổi người dùng (User Switcher Demo ACL) và Hộp thoại c
 from typing import Any, Optional
 import reflex as rx
 from .data_store import GlobalDocState
+from .auth import AuthState
 
 
 # ─── 1. Bộ Chuyển Đổi Profile Người Dùng (Demo Phân Quyền Lớp A vs Lớp B) ────
 
 def user_profile_switcher() -> rx.Component:
-    """Dropdown chuyển đổi tài khoản trực tiếp trên Navbar để demo kịch bản giảng viên."""
-    return rx.hstack(
-        # Hiển thị Tag lớp hiện tại
-        rx.cond(
-            GlobalDocState.current_user_class != "",
+    """Hiển thị profile người dùng đăng nhập thực tế từ PostgreSQL; hỗ trợ switcher khi test."""
+    return rx.cond(
+        AuthState.is_logged_in & (AuthState.current_user_role != ""),
+        # Hiển thị thông tin người dùng thật từ Database khi đã đăng nhập
+        rx.hstack(
             rx.badge(
-                GlobalDocState.current_user_class,
-                color_scheme="blue",
+                AuthState.current_user_role,
+                color_scheme=rx.cond(AuthState.current_user_role == "ADMIN", "red", rx.cond(AuthState.current_user_role == "LECTURER", "purple", "blue")),
                 variant="solid",
                 size="1",
                 radius="full",
             ),
+            rx.hstack(
+                rx.avatar(
+                    fallback=rx.cond(AuthState.current_user_role == "STUDENT", "SV", rx.cond(AuthState.current_user_role == "LECTURER", "GV", "AD")),
+                    size="1",
+                    radius="full",
+                    color_scheme=rx.cond(AuthState.current_user_role == "STUDENT", "blue", "purple"),
+                ),
+                rx.text(AuthState.current_user_name, size="2", weight="bold", max_width="140px", truncate=True),
+                align="center",
+                spacing="2",
+            ),
+            align="center",
+            spacing="2",
+        ),
+        # Fallback cho bộ kiểm thử và demo
+        rx.hstack(
             rx.badge(
                 GlobalDocState.current_user_role,
                 color_scheme="purple",
@@ -31,42 +48,41 @@ def user_profile_switcher() -> rx.Component:
                 size="1",
                 radius="full",
             ),
-        ),
-        # Selector chọn người dùng
-        rx.select.root(
-            rx.select.trigger(
-                rx.hstack(
-                    rx.avatar(
-                        fallback=rx.cond(GlobalDocState.is_student, "SV", "GV"),
-                        size="1",
-                        radius="full",
-                        color_scheme=rx.cond(GlobalDocState.is_student, "blue", "purple"),
+            rx.select.root(
+                rx.select.trigger(
+                    rx.hstack(
+                        rx.avatar(
+                            fallback=rx.cond(GlobalDocState.is_student, "SV", "GV"),
+                            size="1",
+                            radius="full",
+                            color_scheme=rx.cond(GlobalDocState.is_student, "blue", "purple"),
+                        ),
+                        rx.text(GlobalDocState.current_user_name, size="2", weight="bold", max_width="140px", truncate=True),
+                        align="center",
+                        spacing="2",
                     ),
-                    rx.text(GlobalDocState.current_user_name, size="2", weight="bold", max_width="140px", truncate=True),
-                    align="center",
-                    spacing="2",
+                    variant="surface",
+                    size="2",
                 ),
-                variant="surface",
-                size="2",
+                rx.select.content(
+                    rx.select.group(
+                        rx.select.label("Sinh viên (Demo ACL Lớp A / Lớp B):"),
+                        rx.select.item("👤 Lê Hoàng Nam (Lớp D21CQCN01 - Lớp A)", value="u1"),
+                        rx.select.item("👤 Trần Thị Mai (Lớp D21CQCN02 - Lớp B)", value="u2"),
+                    ),
+                    rx.select.separator(),
+                    rx.select.group(
+                        rx.select.label("Giảng viên & Quản trị:"),
+                        rx.select.item("🎓 TS. Nguyễn Văn An (Giảng viên)", value="u3"),
+                        rx.select.item("🛡️ Quản trị viên Hệ thống (Admin)", value="u4"),
+                    ),
+                ),
+                value=GlobalDocState.current_user_id,
+                on_change=GlobalDocState.switch_user,
             ),
-            rx.select.content(
-                rx.select.group(
-                    rx.select.label("Sinh viên (Demo ACL Lớp A / Lớp B):"),
-                    rx.select.item("👤 Lê Hoàng Nam (Lớp D21CQCN01 - Lớp A)", value="u1"),
-                    rx.select.item("👤 Trần Thị Mai (Lớp D21CQCN02 - Lớp B)", value="u2"),
-                ),
-                rx.select.separator(),
-                rx.select.group(
-                    rx.select.label("Giảng viên & Quản trị:"),
-                    rx.select.item("🎓 TS. Nguyễn Văn An (Giảng viên)", value="u3"),
-                    rx.select.item("🛡️ Quản trị viên Hệ thống (Admin)", value="u4"),
-                ),
-            ),
-            value=GlobalDocState.current_user_id,
-            on_change=GlobalDocState.switch_user,
+            align="center",
+            spacing="2",
         ),
-        align="center",
-        spacing="2",
     )
 
 
@@ -228,20 +244,45 @@ def student_navbar(active_route: str = "") -> rx.Component:
                 # Right action & user profile switcher
                 rx.hstack(
                     user_profile_switcher(),
-                    rx.link(
-                        rx.button(
-                            rx.icon("user-cog", size=15),
-                            "Cổng GV",
-                            rx.cond(
-                                GlobalDocState.pending_count > 0,
-                                rx.badge(GlobalDocState.pending_count, color_scheme="red", variant="solid", size="1", radius="full"),
-                                rx.fragment(),
+                    rx.cond(
+                        (AuthState.current_user_role == "LECTURER") | (AuthState.current_user_role == "ADMIN"),
+                        rx.link(
+                            rx.button(
+                                rx.icon("user-cog", size=15),
+                                "Cổng GV",
+                                rx.cond(
+                                    GlobalDocState.pending_count > 0,
+                                    rx.badge(GlobalDocState.pending_count, color_scheme="red", variant="solid", size="1", radius="full"),
+                                    rx.fragment(),
+                                ),
+                                size="2",
+                                variant="surface",
+                                color_scheme="indigo",
                             ),
-                            size="2",
-                            variant="surface",
-                            color_scheme="indigo",
+                            href="/lecturer/approval",
                         ),
-                        href="/lecturer/approval",
+                        rx.fragment(),
+                    ),
+                    rx.cond(
+                        AuthState.is_logged_in & (AuthState.current_user_role != ""),
+                        rx.button(
+                            rx.icon("log-out", size=15),
+                            "Đăng xuất",
+                            size="2",
+                            variant="ghost",
+                            color_scheme="red",
+                            on_click=AuthState.logout,
+                        ),
+                        rx.link(
+                            rx.button(
+                                rx.icon("log-in", size=15),
+                                "Đăng nhập",
+                                size="2",
+                                variant="solid",
+                                color_scheme="blue",
+                            ),
+                            href="/login",
+                        ),
                     ),
                     align="center",
                     spacing="3",
@@ -325,7 +366,7 @@ def lecturer_sidebar(current_route: str = "") -> rx.Component:
                         rx.avatar(fallback="GV", size="2", radius="full", color_scheme="indigo"),
                         rx.vstack(
                             rx.text("TS. Nguyễn Văn An", size="2", weight="bold", color="slate.12"),
-                            rx.text("Khoa CNTT - Kiểm duyệt viên", size="1", color="slate.10"),
+                            rx.text("Cong nghe thong tin - Kiểm duyệt viên", size="1", color="slate.10"),
                             spacing="0",
                         ),
                         align="center",
@@ -375,6 +416,18 @@ def lecturer_sidebar(current_route: str = "") -> rx.Component:
                     ),
                     href="/documents",
                     underline="none",
+                ),
+                rx.button(
+                    rx.hstack(
+                        rx.icon("log-out", size=15, color="var(--red-9)"),
+                        rx.text("Đăng xuất", size="2", color="red.10"),
+                        align="center",
+                        spacing="2",
+                        padding="2",
+                    ),
+                    variant="ghost",
+                    on_click=AuthState.logout,
+                    width="100%",
                 ),
                 spacing="1",
                 width="100%",

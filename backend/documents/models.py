@@ -174,9 +174,17 @@ class DocumentVersion(models.Model):
     def file_path(self):
         return self.file
 
+    @file_path.setter
+    def file_path(self, value):
+        self.file = value
+
     @property
     def object_key(self):
         return self.file
+
+    @object_key.setter
+    def object_key(self, value):
+        self.file = value
 
     def get_download_url(self, expires_in=3600):
         from .r2_service import r2_service

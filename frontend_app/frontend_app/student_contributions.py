@@ -16,6 +16,7 @@ import reflex as rx
 from typing import List, Optional
 from .common_components import student_page_wrapper, kpi_card, status_badge
 from .data_store import GlobalDocState
+from .auth import AuthState, login_page
 
 DOC_TYPE_ICONS = {
     "SLIDE": "presentation",
@@ -42,14 +43,20 @@ class ContributionState(rx.State):
 
     contributions: List[dict] = []
 
-    def load_contributions(self):
+    async def load_contributions(self):
         try:
             import httpx
-            resp = httpx.get("http://127.0.0.1:8000/api/documents/", timeout=3.0)
+            from .auth import AuthState
+            auth = await self.get_state(AuthState)
+            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+            resp = httpx.get("http://127.0.0.1:8000/api/documents/?uploader=me", headers=headers, timeout=3.0)
             if resp.status_code == 200:
                 raw_docs = resp.json().get("documents") or resp.json().get("data") or []
                 loaded = []
                 for d in raw_docs:
+                    # Kiểm tra an toàn: chỉ nhận tài liệu do chính sinh viên hiện tại đóng góp
+                    if auth.current_user_id and str(d.get("uploader_id")) != str(auth.current_user_id):
+                        continue
                     d_id = str(d.get("id") or d.get("document_id"))
                     title = d.get("title", "")
                     s_name = d.get("subject_name") or d.get("subject", {}).get("subject_name", "")
@@ -62,26 +69,90 @@ class ContributionState(rx.State):
                         "title": title,
                         "subject_code": f"SUB_{d.get('subject_id', 1)}",
                         "subject_name": s_name,
-                        "folder": "Kho tài liệu",
+                        "folder": d.get("folder_name") or "Kho tài liệu",
                         "doc_type": "TEXTBOOK",
                         "type_label": "Giáo trình",
                         "status": status,
                         "submitted_at": created,
                         "reviewed_at": created if status == "APPROVED" else "",
                         "reviewer": d.get("uploader_name", "Giảng viên"),
-                        "reject_reason": "",
+                        "reject_reason": str(d.get("reject_reason") or ""),
                         "version": str(d.get("latest_version") or "1.0"),
                         "filename": fname,
                         "file_size": fsize,
                         "view_count": int(d.get("view_count", 0)),
                         "download_count": int(d.get("download_count", 0)),
-                        "tags": ["học liệu"],
+                        "tags": d.get("tags") or ["học liệu"],
                         "is_public": bool(d.get("is_public", True)),
                     })
                 self.contributions = loaded
                 return
         except Exception:
             pass
+
+        # Dự phòng qua Django ORM khi không truy cập được API
+        try:
+            import os, sys, asyncio
+            from .auth import AuthState
+            auth = await self.get_state(AuthState)
+            u_id = auth.current_user_id if auth and auth.is_logged_in else None
+            if not u_id:
+                self.contributions = []
+                return
+
+            def _fetch_my_contributions(user_id):
+                backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+                if backend_dir not in sys.path:
+                    sys.path.insert(0, backend_dir)
+                os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+                import django
+                django.setup()
+                from documents.models import Document as DjDoc
+                docs = DjDoc.objects.filter(uploader_id=user_id).select_related('subject', 'folder').prefetch_related('activity_logs', 'tags').order_by('-id')
+                res = []
+                for d in docs:
+                    d_id = str(d.id)
+                    s_name = d.subject.subject_name if d.subject else ""
+                    f_name = d.folder.folder_name if d.folder else "Kho tài liệu"
+                    created = d.created_at.strftime('%Y-%m-%d %H:%M') if d.created_at else ""
+                    latest = d.latest_version
+                    fname = os.path.basename(str(latest.file)) if (latest and latest.file) else f"document_{d_id}.pdf"
+                    fsize = "2.0 MB"
+                    status = str(d.status).upper()
+                    reject_reason = ""
+                    if status == "REJECTED":
+                        rej_log = next((l for l in d.activity_logs.all() if l.action == 'REJECT'), None)
+                        if rej_log and rej_log.description:
+                            desc = rej_log.description
+                            reject_reason = desc.replace('Từ chối duyệt: ', '').strip() if desc.startswith('Từ chối duyệt: ') else desc
+
+                    res.append({
+                        "id": d_id,
+                        "title": d.title,
+                        "subject_code": f"SUB_{d.subject_id}",
+                        "subject_name": s_name,
+                        "folder": f_name,
+                        "doc_type": "TEXTBOOK",
+                        "type_label": "Giáo trình",
+                        "status": status,
+                        "submitted_at": created,
+                        "reviewed_at": created if status == "APPROVED" else "",
+                        "reviewer": "Giảng viên",
+                        "reject_reason": reject_reason,
+                        "version": f"v{latest.version_number}.0" if latest else "1.0",
+                        "filename": fname,
+                        "file_size": fsize,
+                        "view_count": int(d.view_count or 0),
+                        "download_count": int(d.download_count or 0),
+                        "tags": [t.tag_name for t in d.tags.all()] if hasattr(d, 'tags') else ["học liệu"],
+                        "is_public": bool(d.is_public),
+                    })
+                return res
+
+            self.contributions = await asyncio.to_thread(_fetch_my_contributions, u_id)
+            return
+        except Exception:
+            self.contributions = []
     active_tab: str = "ALL"
 
     # Detail / Reject dialog
@@ -630,8 +701,10 @@ def empty_state(tab: str) -> rx.Component:
 # ─── Main Page ───────────────────────────────────────────────────────────────
 
 def student_contributions_page() -> rx.Component:
-    return student_page_wrapper(
-        rx.vstack(
+    return rx.cond(
+        AuthState.is_logged_in & (AuthState.current_user_role != ""),
+        student_page_wrapper(
+            rx.vstack(
             # ── Page Header ──
             rx.hstack(
                 rx.hstack(
@@ -718,4 +791,6 @@ def student_contributions_page() -> rx.Component:
             width="100%",
         ),
         active_route="/student/contributions",
-    )
+    ),
+    login_page(),
+)

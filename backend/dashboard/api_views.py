@@ -197,6 +197,22 @@ def dashboard_stats_api(request):
             'created_at': log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at else '',
         })
 
+    documents_stats = {
+        'total': total_docs,
+        'approved': approved_docs,
+        'pending': pending_docs,
+        'rejected': rejected_docs,
+        'total_views': total_views,
+        'total_downloads': total_downloads,
+    }
+    users_stats = {
+        'total': total_users,
+        'total_active': total_users,
+        'students': total_students,
+        'lecturers': total_lecturers,
+        'admins': total_admins,
+    }
+
     stats_summary = {
         'total_documents': total_docs,
         'approved_documents': approved_docs,
@@ -214,12 +230,16 @@ def dashboard_stats_api(request):
         'total_folders': Folder.objects.count(),
         'total_tags': Tag.objects.count(),
         'indexing': indexing_stats,
+        'documents': documents_stats,
+        'users': users_stats,
     }
 
     payload = {
         'status': 'ok',
         'message': 'Thành công',
         'stats': stats_summary,
+        'documents': documents_stats,
+        'users': users_stats,
         'subject_breakdown': subject_stats,
         'monthly_trends': monthly_trends,
         'chart_trends_7d': chart_trends_7d,

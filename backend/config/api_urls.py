@@ -7,6 +7,7 @@ from django.urls import path
 
 # Accounts & Auth
 from accounts.api_views import (
+    health_api,
     login_api,
     logout_api,
     current_user_api,
@@ -80,6 +81,9 @@ from ai_search.api_views import (
 app_name = 'api'
 
 urlpatterns = [
+    # ── 0. System Health Check ──
+    path('health/', health_api, name='api_health'),
+
     # ── 1. Auth & Users ──
     path('auth/login/', login_api, name='api_login'),
     path('auth/logout/', logout_api, name='api_logout'),

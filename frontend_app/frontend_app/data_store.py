@@ -20,7 +20,7 @@ PRESET_USERS: List[Dict[str, Any]] = [
         "role_label": "Sinh viên",
         "class_name": "Lớp D21CQCN01-A",
         "class_code": "CLASS_A",
-        "department": "Khoa Công nghệ thông tin",
+        "department": "Cong nghe thong tin",
         "avatar_color": "blue",
     },
     {
@@ -31,7 +31,7 @@ PRESET_USERS: List[Dict[str, Any]] = [
         "role_label": "Sinh viên",
         "class_name": "Lớp D21CQCN02-B",
         "class_code": "CLASS_B",
-        "department": "Khoa Công nghệ thông tin",
+        "department": "Cong nghe thong tin",
         "avatar_color": "indigo",
     },
     {
@@ -42,7 +42,7 @@ PRESET_USERS: List[Dict[str, Any]] = [
         "role_label": "Giảng viên",
         "class_name": "",
         "class_code": "",
-        "department": "Khoa Công nghệ thông tin",
+        "department": "Cong nghe thong tin",
         "avatar_color": "purple",
     },
     {
@@ -53,7 +53,7 @@ PRESET_USERS: List[Dict[str, Any]] = [
         "role_label": "Quản trị viên",
         "class_name": "",
         "class_code": "",
-        "department": "Phòng Đào tạo",
+        "department": "Cong nghe thong tin",
         "avatar_color": "gray",
     },
 ]
@@ -66,11 +66,11 @@ INITIAL_DOCUMENTS: List[Dict[str, Any]] = [
     {
         "id": "doc_acl_class_a",
         "title": "[Lớp A] Đề cương & Mã nguồn BTL Lập trình Web Full-Stack",
-        "subject_code": "IT410",
-        "subject_name": "Lập trình Web",
-        "faculty": "CNTT",
-        "folder_path": "IT410 / Bài tập lớn / Nhóm A",
-        "folder_name": "Bài tập lớn",
+        "subject_code": "Lap trinh Java",
+        "subject_name": "Lap trinh Java",
+        "faculty": "Cong nghe thong tin",
+        "folder_path": "Lap trinh Java / Bai tap",
+        "folder_name": "Bai tap",
         "doc_type": "EXERCISE",
         "type_label": "Bài tập lớn",
         "type_color": "purple",
@@ -84,7 +84,7 @@ INITIAL_DOCUMENTS: List[Dict[str, Any]] = [
         "status": "APPROVED",
         "is_public": False,
         "allowed_classes": ["Lớp D21CQCN01-A"],
-        "allowed_departments": ["Khoa Công nghệ thông tin"],
+        "allowed_departments": ["Cong nghe thong tin"],
         "downloads": 45,
         "views": 120,
         "submitted_at": "2026-10-10 08:30",
@@ -149,11 +149,11 @@ INITIAL_DOCUMENTS: List[Dict[str, Any]] = [
     {
         "id": "doc_acl_class_b",
         "title": "[Lớp B] Tài liệu Thí nghiệm & Lab Cơ sở dữ liệu nâng cao",
-        "subject_code": "IT305",
-        "subject_name": "Cơ sở dữ liệu",
-        "faculty": "CNTT",
-        "folder_path": "IT305 / Script SQL / Lab Lớp B",
-        "folder_name": "Script SQL",
+        "subject_code": "Co so du lieu",
+        "subject_name": "Co so du lieu",
+        "faculty": "Cong nghe thong tin",
+        "folder_path": "Co so du lieu / Bai giang",
+        "folder_name": "Bai giang",
         "doc_type": "EXERCISE",
         "type_label": "Bài tập thực hành",
         "type_color": "indigo",
@@ -167,7 +167,7 @@ INITIAL_DOCUMENTS: List[Dict[str, Any]] = [
         "status": "APPROVED",
         "is_public": False,
         "allowed_classes": ["Lớp D21CQCN02-B"],
-        "allowed_departments": ["Khoa Công nghệ thông tin"],
+        "allowed_departments": ["Cong nghe thong tin"],
         "downloads": 38,
         "views": 95,
         "submitted_at": "2026-10-09 10:15",
@@ -209,18 +209,18 @@ INITIAL_DOCUMENTS: List[Dict[str, Any]] = [
     # ── Doc 3: Tài liệu Công Khai (PUBLIC) Toàn Trường (Đa Phiên Bản v1.0, v2.0, v2.1) ──
     {
         "id": "doc_public_ctdl",
-        "title": "Giáo trình Cấu trúc dữ liệu và giải thuật 2026",
-        "subject_code": "IT202",
-        "subject_name": "Cấu trúc dữ liệu & GT",
-        "faculty": "CNTT",
-        "folder_path": "IT202 / Giáo trình / Giáo trình chính thức",
-        "folder_name": "Giáo trình",
+        "title": "Giáo trình Mạng máy tính và truyền thông dữ liệu 2026",
+        "subject_code": "Mang may tinh",
+        "subject_name": "Mang may tinh",
+        "faculty": "Cong nghe thong tin",
+        "folder_path": "Mang may tinh / Bai giang",
+        "folder_name": "Bai giang",
         "doc_type": "TEXTBOOK",
         "type_label": "Giáo trình",
         "type_color": "blue",
         "icon": "book",
         "current_version": "v2.1",
-        "file_name": "GiaoTrinh_CTDL_GT_2026.pdf",
+        "file_name": "GiaoTrinh_MangMayTinh_2026.pdf",
         "file_size": "15.8 MB",
         "uploader_name": "TS. Nguyễn Văn An",
         "uploader_id": "u3",
@@ -235,27 +235,27 @@ INITIAL_DOCUMENTS: List[Dict[str, Any]] = [
         "reviewed_at": "2026-09-01 08:30",
         "reviewer": "TS. Nguyễn Văn An",
         "reject_reason": "",
-        "description": "Giáo trình chính thức cập nhật lý thuyết cây AVL, B-Tree, bảng băm và thuật toán đồ thị Dijkstra.",
-        "tags": ["ctdl", "python", "giao-trinh", "giai-thuat"],
+        "description": "Giáo trình chính thức cập nhật lý thuyết mô hình OSI, giao thức TCP/IP và định tuyến mạng.",
+        "tags": ["mang", "tcp-ip", "giao-trinh"],
         "preview_text": (
-            "=== GIÁO TRÌNH CẤU TRÚC DỮ LIỆU & GIẢI THUẬT 2026 ===\n\n"
-            "Chương 1: Phân tích độ phức tạp thuật toán O(n).\n"
-            "Chương 2: Ngăn xếp (Stack) và Hàng đợi (Queue).\n"
-            "Chương 3: Cây nhị phân tìm kiếm & Cây AVL tự cân bằng.\n"
-            "Chương 4: Thuật toán đồ thị: DFS, BFS, Dijkstra, Kruskal."
+            "=== GIÁO TRÌNH MẠNG MÁY TÍNH & TRUYỀN THÔNG DỮ LIỆU ===\n\n"
+            "Chương 1: Tổng quan về mạng máy tính và Internet.\n"
+            "Chương 2: Tầng ứng dụng (Application Layer): HTTP, DNS, SMTP.\n"
+            "Chương 3: Tầng giao vận (Transport Layer): TCP và UDP.\n"
+            "Chương 4: Tầng mạng (Network Layer): Định tuyến IP, OSPF, BGP."
         ),
         "versions": [
             {
                 "version": "v2.1",
-                "file_name": "GiaoTrinh_CTDL_GT_2026_v2.1.pdf",
-                "change_summary": "Bổ sung thuật toán cây đỏ đen và bài tập Dijkstra",
+                "file_name": "GiaoTrinh_MangMayTinh_2026_v2.1.pdf",
+                "change_summary": "Bổ sung giao thức định tuyến OSPF và bài tập Wireshark",
                 "uploaded_at": "2026-10-12 14:30",
                 "file_size": "15.8 MB",
                 "uploader_name": "TS. Nguyễn Văn An",
             },
             {
                 "version": "v2.0",
-                "file_name": "GiaoTrinh_CTDL_GT_2026_v2.0.pdf",
+                "file_name": "GiaoTrinh_MangMayTinh_2026_v2.0.pdf",
                 "change_summary": "Tái cấu trúc toàn diện chương 4 và chương 5",
                 "uploaded_at": "2026-09-15 09:15",
                 "file_size": "14.2 MB",
@@ -263,7 +263,7 @@ INITIAL_DOCUMENTS: List[Dict[str, Any]] = [
             },
             {
                 "version": "v1.0",
-                "file_name": "GiaoTrinh_CTDL_GT_2026_v1.0.pdf",
+                "file_name": "GiaoTrinh_MangMayTinh_2026_v1.0.pdf",
                 "change_summary": "Bản phát hành đầu tiên",
                 "uploaded_at": "2026-09-01 08:00",
                 "file_size": "12.0 MB",
@@ -305,18 +305,18 @@ INITIAL_DOCUMENTS: List[Dict[str, Any]] = [
     # ── Doc 4: Tài liệu ĐANG CHỜ DUYỆT (PENDING) -> Để demo luồng Giảng viên duyệt sang Public ──
     {
         "id": "doc_pending_avl",
-        "title": "Slide Tóm tắt Chương 5: Cây nhị phân và Cây AVL",
-        "subject_code": "IT202",
-        "subject_name": "Cấu trúc dữ liệu & GT",
-        "faculty": "CNTT",
-        "folder_path": "IT202 / Slide bài giảng / Slide tóm tắt",
-        "folder_name": "Slide bài giảng",
+        "title": "Slide Bài giảng Kinh tế vi mô Chương 1-5",
+        "subject_code": "Kinh te vi mo",
+        "subject_name": "Kinh te vi mo",
+        "faculty": "Kinh te",
+        "folder_path": "Kinh te vi mo / Bai giang",
+        "folder_name": "Bai giang",
         "doc_type": "SLIDE",
         "type_label": "Slide Bài giảng",
         "type_color": "orange",
         "icon": "presentation",
         "current_version": "v1.0",
-        "file_name": "IT202_Slide_CayNhiPhan_AVL.pptx",
+        "file_name": "KinhTeViMo_Slide_Chuong1_5.pptx",
         "file_size": "6.8 MB",
         "uploader_name": "Lê Hoàng Nam",
         "uploader_id": "u1",
@@ -331,21 +331,17 @@ INITIAL_DOCUMENTS: List[Dict[str, Any]] = [
         "reviewed_at": "",
         "reviewer": "",
         "reject_reason": "",
-        "description": "Em tổng hợp các thao tác xoay đơn LL, RR và xoay kép LR, RL trên cây AVL kèm mã giả thuật toán để các bạn dễ ôn thi.",
-        "tags": ["ctdl", "cay-avl", "slide", "it202"],
+        "description": "Tổng hợp lý thuyết cung cầu, độ co giãn và hành vi người tiêu dùng môn Kinh tế vi mô.",
+        "tags": ["kinh-te", "vi-mo", "slide"],
         "preview_text": (
-            "=== CHƯƠNG 5: CÂY NHỊ PHÂN TỰ CÂN BẰNG AVL ===\n\n"
-            "Định nghĩa: Hệ số cân bằng BF(v) = height(left) - height(right) ∈ {-1, 0, 1}.\n"
-            "Các phép xoay cơ bản:\n"
-            "• Xoay đơn LL: Xoay phải tại gốc.\n"
-            "• Xoay đơn RR: Xoay trái tại gốc.\n"
-            "• Xoay kép LR: Xoay trái tại nút con trái, sau đó xoay phải tại gốc.\n"
-            "• Xoay kép RL: Xoay phải tại nút con phải, sau đó xoay trái tại gốc."
+            "=== CHƯƠNG 1: TỔNG QUAN VỀ KINH TẾ VI MÔ ===\n\n"
+            "Quy luật Cung - Cầu và Điểm cân bằng thị trường.\n"
+            "Độ co giãn của cầu theo giá và thu nhập."
         ),
         "versions": [
             {
                 "version": "v1.0",
-                "file_name": "IT202_Slide_CayNhiPhan_AVL.pptx",
+                "file_name": "KinhTeViMo_Slide_Chuong1_5.pptx",
                 "change_summary": "Bản đóng góp khởi tạo của sinh viên",
                 "uploaded_at": "2026-10-15 08:30",
                 "file_size": "6.8 MB",
@@ -366,18 +362,18 @@ INITIAL_DOCUMENTS: List[Dict[str, Any]] = [
     # ── Doc 5: Tài liệu TỪ CHỐI (REJECTED) -> Để demo xem phản hồi và nộp v2.0 ──
     {
         "id": "doc_rejected_sql",
-        "title": "Bài tập thực hành SQL nâng cao - Lab 5 & 6",
-        "subject_code": "IT305",
-        "subject_name": "Cơ sở dữ liệu",
-        "faculty": "CNTT",
-        "folder_path": "IT305 / Script SQL / Thực hành",
-        "folder_name": "Script SQL",
-        "doc_type": "EXERCISE",
-        "type_label": "Bài tập thực hành",
+        "title": "Tài liệu tham khảo Kế toán đại cương cho người mới bắt đầu",
+        "subject_code": "Ke toan dai cuong",
+        "subject_name": "Ke toan dai cuong",
+        "faculty": "Kinh te",
+        "folder_path": "Ke toan dai cuong / Tai lieu tham khao",
+        "folder_name": "Tai lieu tham khao",
+        "doc_type": "REFERENCE",
+        "type_label": "Tài liệu tham khảo",
         "type_color": "red",
         "icon": "database",
         "current_version": "v1.0",
-        "file_name": "SQL_Lab5_Lab6_NangCao.zip",
+        "file_name": "KeToanDaiCuong_ThamKhao.zip",
         "file_size": "3.1 MB",
         "uploader_name": "Lê Hoàng Nam",
         "uploader_id": "u1",
@@ -391,17 +387,17 @@ INITIAL_DOCUMENTS: List[Dict[str, Any]] = [
         "submitted_at": "2026-10-03 11:10",
         "reviewed_at": "2026-10-04 08:45",
         "reviewer": "TS. Nguyễn Văn An",
-        "reject_reason": "Tài liệu bị trùng lặp với bộ Lab có sẵn trong hệ thống. Vui lòng bổ sung bài tập phân tích query execution plan và nộp lại phiên bản v2.0.",
-        "description": "Bộ bài tập thực hành SQL nâng cao về Trigger và Stored Procedure.",
-        "tags": ["sql", "thực hành", "lab"],
+        "reject_reason": "Tài liệu bị thiếu phần định khoản kế toán. Vui lòng bổ sung bài tập định khoản và nộp lại phiên bản v2.0.",
+        "description": "Tài liệu hệ thống hóa nguyên lý kế toán và bài tập định khoản.",
+        "tags": ["ke-toan", "nguyen-ly", "tham-khao"],
         "preview_text": (
-            "=== BÀI TẬP THỰC HÀNH SQL LAB 5 & 6 ===\n\n"
-            "Tạo bảng và viết Stored Procedure quản lý đơn hàng."
+            "=== NGUYÊN LÝ KẾ TOÁN ĐẠI CƯƠNG ===\n\n"
+            "Phương trình kế toán: Tài sản = Nợ phải trả + Vốn chủ sở hữu."
         ),
         "versions": [
             {
                 "version": "v1.0",
-                "file_name": "SQL_Lab5_Lab6_NangCao.zip",
+                "file_name": "KeToanDaiCuong_ThamKhao.zip",
                 "change_summary": "Bản nộp ban đầu",
                 "uploaded_at": "2026-10-03 11:10",
                 "file_size": "3.1 MB",
@@ -433,80 +429,131 @@ for _d in INITIAL_DOCUMENTS:
         _d["tag_str"] = "  ".join(f"#{t}" for t in _d.get("tags", []))
 
 
-# ─── 3. Cấu Trúc Cây Thư Mục Đa Cấp ──────────────────────────────────────────
+# ─── 3. Cấu Trúc Cây Thư Mục Đa Cấp Từ PostgreSQL Database ────────────────────
 
-FOLDER_TREE_DATA: List[Dict[str, Any]] = [
-    {
-        "id": "fac_cntt",
-        "name": "Khoa Công nghệ thông tin",
-        "type": "FACULTY",
-        "code": "CNTT",
-        "children": [
-            {
-                "id": "sub_it101",
-                "name": "IT101 - Nhập môn lập trình",
-                "type": "SUBJECT",
-                "code": "IT101",
-                "children": [
-                    {"id": "f_it101_slide", "name": "Slide bài giảng", "type": "FOLDER", "code": "IT101"},
-                    {"id": "f_it101_ex", "name": "Bài tập thực hành", "type": "FOLDER", "code": "IT101"},
-                    {"id": "f_it101_exam", "name": "Đề thi & Đáp án", "type": "FOLDER", "code": "IT101"},
-                ],
-            },
-            {
-                "id": "sub_it202",
-                "name": "IT202 - Cấu trúc dữ liệu & GT",
-                "type": "SUBJECT",
-                "code": "IT202",
-                "children": [
-                    {"id": "f_it202_text", "name": "Giáo trình", "type": "FOLDER", "code": "IT202"},
-                    {"id": "f_it202_slide", "name": "Slide bài giảng", "type": "FOLDER", "code": "IT202"},
-                    {"id": "f_it202_btl", "name": "Bài tập lớn", "type": "FOLDER", "code": "IT202"},
-                ],
-            },
-            {
-                "id": "sub_it305",
-                "name": "IT305 - Cơ sở dữ liệu",
-                "type": "SUBJECT",
-                "code": "IT305",
-                "children": [
-                    {"id": "f_it305_slide", "name": "Slide bài giảng", "type": "FOLDER", "code": "IT305"},
-                    {"id": "f_it305_sql", "name": "Script SQL", "type": "FOLDER", "code": "IT305"},
-                    {"id": "f_it305_exam", "name": "Đề thi & Đáp án", "type": "FOLDER", "code": "IT305"},
-                ],
-            },
-            {
-                "id": "sub_it410",
-                "name": "IT410 - Lập trình Web",
-                "type": "SUBJECT",
-                "code": "IT410",
-                "children": [
-                    {"id": "f_it410_fe", "name": "HTML/CSS/JS", "type": "FOLDER", "code": "IT410"},
-                    {"id": "f_it410_be", "name": "Backend Python", "type": "FOLDER", "code": "IT410"},
-                    {"id": "f_it410_btl", "name": "Bài tập lớn", "type": "FOLDER", "code": "IT410"},
-                ],
-            },
-        ],
-    },
-    {
-        "id": "fac_kt",
-        "name": "Khoa Kinh tế",
-        "type": "FACULTY",
-        "code": "KT",
-        "children": [
-            {
-                "id": "sub_eco101",
-                "name": "ECO101 - Kinh tế vi mô",
-                "type": "SUBJECT",
-                "code": "ECO101",
-                "children": [
-                    {"id": "f_eco101_slide", "name": "Slide bài giảng", "type": "FOLDER", "code": "ECO101"},
-                    {"id": "f_eco101_ex", "name": "Bài tập kinh tế", "type": "FOLDER", "code": "ECO101"},
-                ],
-            },
-        ],
-    },
-]
+def build_db_folder_tree() -> List[Dict[str, Any]]:
+    """Xây dựng Cây thư mục học liệu phân cấp đa tầng trực tiếp từ PostgreSQL."""
+    try:
+        import httpx
+        r_d = httpx.get("http://127.0.0.1:8000/api/departments/", timeout=2.0)
+        r_s = httpx.get("http://127.0.0.1:8000/api/subjects/", timeout=2.0)
+        r_f = httpx.get("http://127.0.0.1:8000/api/folders/", timeout=2.0)
+        if r_d.status_code == 200 and r_s.status_code == 200:
+            depts = r_d.json().get("departments") or r_d.json().get("data") or []
+            subs = r_s.json().get("subjects") or r_s.json().get("data") or []
+            folders = r_f.json().get("folders") or r_f.json().get("data") or [] if r_f.status_code == 200 else []
+
+            tree = []
+            for d in depts:
+                d_id = d.get("id") or d.get("department_id")
+                d_name = d.get("department_name")
+                d_subs = [s for s in subs if str(s.get("department_id")) == str(d_id)]
+                sub_nodes = []
+                for s in d_subs:
+                    s_id = s.get("id") or s.get("subject_id")
+                    s_name = s.get("subject_name")
+                    s_folders = [f for f in folders if str(f.get("subject_id")) == str(s_id)]
+                    folder_nodes = [
+                        {
+                            "id": f"f_{f.get('id') or f.get('folder_id')}",
+                            "name": f.get("folder_name"),
+                            "type": "FOLDER",
+                            "code": s_name,
+                        }
+                        for f in s_folders
+                    ]
+                    if not folder_nodes:
+                        folder_nodes = [{"id": f"f_default_{s_id}", "name": "Tài liệu chung", "type": "FOLDER", "code": s_name}]
+                    sub_nodes.append({
+                        "id": f"sub_{s_id}",
+                        "name": s_name,
+                        "type": "SUBJECT",
+                        "code": s_name,
+                        "children": folder_nodes,
+                    })
+                tree.append({
+                    "id": f"fac_{d_id}",
+                    "name": d_name,
+                    "type": "FACULTY",
+                    "code": d_name,
+                    "children": sub_nodes,
+                })
+            if tree:
+                return tree
+    except Exception:
+        pass
+
+    try:
+        from academics.models import Department
+        tree = []
+        for d in Department.objects.prefetch_related('subjects__folders').order_by('department_name'):
+            sub_nodes = []
+            for s in d.subjects.all().order_by('subject_name'):
+                folder_nodes = [
+                    {
+                        "id": f"f_{f.id}",
+                        "name": f.folder_name,
+                        "type": "FOLDER",
+                        "code": s.subject_name,
+                    }
+                    for f in s.folders.all().order_by('folder_name')
+                ]
+                if not folder_nodes:
+                    folder_nodes = [{"id": f"f_default_{s.id}", "name": "Tài liệu chung", "type": "FOLDER", "code": s.subject_name}]
+                sub_nodes.append({
+                    "id": f"sub_{s.id}",
+                    "name": s.subject_name,
+                    "type": "SUBJECT",
+                    "code": s.subject_name,
+                    "children": folder_nodes,
+                })
+            tree.append({
+                "id": f"fac_{d.id}",
+                "name": d.department_name,
+                "type": "FACULTY",
+                "code": d.department_name,
+                "children": sub_nodes,
+            })
+        if tree:
+            return tree
+    except Exception:
+        pass
+
+    return [
+        {
+            "id": "fac_1",
+            "name": "Cong nghe thong tin",
+            "type": "FACULTY",
+            "code": "Cong nghe thong tin",
+            "children": [
+                {"id": "sub_1", "name": "Lap trinh Java", "type": "SUBJECT", "code": "Lap trinh Java", "children": [{"id": "f_1", "name": "Bai giang", "type": "FOLDER", "code": "Lap trinh Java"}, {"id": "f_2", "name": "Bai tap", "type": "FOLDER", "code": "Lap trinh Java"}, {"id": "f_3", "name": "Tuan 1", "type": "FOLDER", "code": "Lap trinh Java"}, {"id": "f_4", "name": "Tuan 2", "type": "FOLDER", "code": "Lap trinh Java"}]},
+                {"id": "sub_2", "name": "Co so du lieu", "type": "SUBJECT", "code": "Co so du lieu", "children": [{"id": "f_5", "name": "Bai giang", "type": "FOLDER", "code": "Co so du lieu"}, {"id": "f_6", "name": "De thi", "type": "FOLDER", "code": "Co so du lieu"}, {"id": "f_7", "name": "Chuong 1", "type": "FOLDER", "code": "Co so du lieu"}]},
+                {"id": "sub_3", "name": "Mang may tinh", "type": "SUBJECT", "code": "Mang may tinh", "children": [{"id": "f_8", "name": "Bai giang", "type": "FOLDER", "code": "Mang may tinh"}]},
+            ]
+        },
+        {
+            "id": "fac_2",
+            "name": "Kinh te",
+            "type": "FACULTY",
+            "code": "Kinh te",
+            "children": [
+                {"id": "sub_4", "name": "Kinh te vi mo", "type": "SUBJECT", "code": "Kinh te vi mo", "children": [{"id": "f_9", "name": "Bai giang", "type": "FOLDER", "code": "Kinh te vi mo"}, {"id": "f_10", "name": "Bai tap", "type": "FOLDER", "code": "Kinh te vi mo"}]},
+                {"id": "sub_5", "name": "Ke toan dai cuong", "type": "SUBJECT", "code": "Ke toan dai cuong", "children": [{"id": "f_11", "name": "Tai lieu tham khao", "type": "FOLDER", "code": "Ke toan dai cuong"}]},
+            ]
+        },
+        {
+            "id": "fac_3",
+            "name": "Ngoai ngu",
+            "type": "FACULTY",
+            "code": "Ngoai ngu",
+            "children": [
+                {"id": "sub_6", "name": "Tieng Anh chuyen nganh", "type": "SUBJECT", "code": "Tieng Anh chuyen nganh", "children": [{"id": "f_12", "name": "Bai giang", "type": "FOLDER", "code": "Tieng Anh chuyen nganh"}]},
+                {"id": "sub_7", "name": "Ngu phap co ban", "type": "SUBJECT", "code": "Ngu phap co ban", "children": [{"id": "f_13", "name": "Tài liệu chung", "type": "FOLDER", "code": "Ngu phap co ban"}]},
+            ]
+        }
+    ]
+
+FOLDER_TREE_DATA: List[Dict[str, Any]] = build_db_folder_tree()
 
 
 # ─── 4. Global State Reactive Store ──────────────────────────────────────────
@@ -518,8 +565,10 @@ class GlobalDocState(rx.State):
     users: List[Dict[str, Any]] = PRESET_USERS
     current_user_id: str = "u1"  # Mặc định Sinh viên Lê Hoàng Nam (Lớp D21CQCN01-A)
 
-    # ── Danh sách tài liệu động ──
-    documents: List[Dict[str, Any]] = INITIAL_DOCUMENTS
+    # ── Danh sách tài liệu động (Chỉ lấy từ PostgreSQL qua API/ORM, mặc định rỗng) ──
+    documents: List[Dict[str, Any]] = []
+    is_loading: bool = False
+    load_error: str = ""
 
     # ── Bộ lọc & Điều hướng cây thư mục ──
     selected_faculty: str = "ALL"
@@ -556,11 +605,26 @@ class GlobalDocState(rx.State):
     rejecting_doc_id: str = ""
     reject_feedback_input: str = ""
 
-    def load_documents(self):
-        """Tải toàn bộ tài liệu thực tế từ cơ sở dữ liệu PostgreSQL."""
+    async def load_documents(self):
+        """Tải toàn bộ tài liệu thực tế từ cơ sở dữ liệu PostgreSQL qua Django API / ORM."""
+        self.is_loading = True
+        self.load_error = ""
+        api_error_detail = ""
+
+        # 1. Nạp từ REST API Backend
         try:
             import httpx
-            resp = httpx.get("http://127.0.0.1:8000/api/documents/", timeout=3.0)
+            token = ""
+            try:
+                from .auth import AuthState
+                auth = await self.get_state(AuthState)
+                if auth and auth.is_logged_in:
+                    token = getattr(auth, 'auth_token', '')
+            except Exception:
+                pass
+
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            resp = httpx.get("http://127.0.0.1:8000/api/documents/", headers=headers, timeout=4.0)
             if resp.status_code == 200:
                 raw_docs = resp.json().get("documents") or resp.json().get("data") or []
                 loaded = []
@@ -568,7 +632,7 @@ class GlobalDocState(rx.State):
                     d_id = str(d.get("id") or d.get("document_id"))
                     title = d.get("title", "")
                     s_name = d.get("subject_name") or d.get("subject", {}).get("subject_name", "")
-                    dept_name = d.get("department_name") or "Khoa CNTT"
+                    dept_name = d.get("department_name") or "Cong nghe thong tin"
                     status = str(d.get("status") or "APPROVED").upper()
                     u_name = d.get("uploader_name") or "DocUni"
                     created = str(d.get("created_at") or "")[:16]
@@ -577,10 +641,15 @@ class GlobalDocState(rx.State):
                     f_name = d.get("folder_name") or "Tài liệu chung"
                     tags_list = d.get("tags") or ["học liệu", "docuni"]
                     tag_str = "  ".join(f"#{t}" for t in tags_list)
+                    allowed_classes = d.get("allowed_classes") or []
+                    allowed_depts = d.get("allowed_departments") or []
+                    matched_snippet = str(d.get("matched_snippet") or "")
+                    is_public = bool(d.get("is_public", True))
+
                     loaded.append({
                         "id": d_id,
                         "title": title,
-                        "subject_code": f"SUB_{d.get('subject_id', 1)}",
+                        "subject_code": s_name,
                         "subject_name": s_name,
                         "faculty": dept_name,
                         "folder_path": f"{s_name} / {f_name}",
@@ -596,27 +665,189 @@ class GlobalDocState(rx.State):
                         "uploader_id": str(d.get("uploader_id") or "1"),
                         "uploader_class": "Lớp D21CQCN01-A",
                         "status": status,
-                        "is_public": bool(d.get("is_public", True)),
-                        "allowed_classes": [],
-                        "allowed_departments": [],
+                        "is_public": is_public,
+                        "allowed_classes": allowed_classes,
+                        "allowed_departments": allowed_depts,
                         "downloads": int(d.get("download_count", 0)),
                         "views": int(d.get("view_count", 0)),
                         "submitted_at": created,
                         "reviewed_at": created,
                         "reviewer": "TS. Nguyễn Văn An",
-                        "reject_reason": "",
+                        "reject_reason": str(d.get("reject_reason") or ""),
                         "description": d.get("description") or f"Tài liệu môn học {s_name}",
                         "tags": tags_list,
                         "tag_str": tag_str,
                         "preview_text": d.get("description") or title,
-                        "versions": [{"version": "v1.0", "file_name": fname, "change_summary": "Bản khởi tạo", "uploaded_at": created, "file_size": fsize, "uploader_name": u_name}],
+                        "matched_snippet": matched_snippet,
+                        "versions": [{"version": str(d.get("latest_version") or "v1.0"), "file_name": fname, "change_summary": "Bản khởi tạo", "uploaded_at": created, "file_size": fsize, "uploader_name": u_name}],
                         "activity_logs": [{"id": f"log_{d_id}", "action": "CREATE", "user_name": u_name, "description": "Tải lên học liệu", "timestamp": created}],
                     })
-                if loaded:
-                    self.documents = loaded
+                self.documents = loaded
+                self.is_loading = False
+                self.load_error = ""
                 return
-        except Exception:
-            pass
+            else:
+                api_error_detail = f"API trả về mã trạng thái {resp.status_code}"
+        except Exception as e:
+            api_error_detail = str(e)
+
+        # 2. Dự phòng trực tiếp qua Django ORM với cơ sở dữ liệu PostgreSQL
+        try:
+            import os, sys, asyncio
+            backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+            if backend_dir not in sys.path:
+                sys.path.insert(0, backend_dir)
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+            import django
+            django.setup()
+
+            auth_user_id = None
+            auth_role = None
+            try:
+                from .auth import AuthState
+                auth = await self.get_state(AuthState)
+                if auth and auth.is_logged_in:
+                    auth_user_id = auth.current_user_id
+                    auth_role = auth.current_user_role
+            except Exception:
+                pass
+
+            def _fetch_from_orm(u_id, r_name):
+                from documents.models import Document as DjDoc
+                from permissions.models import DocumentPermission
+                from django.db.models import Q
+                from accounts.models import User as DjUser
+
+                qs = DjDoc.objects.select_related('subject', 'subject__department', 'folder', 'uploader').prefetch_related(
+                    'versions', 'permissions__student_class', 'permissions__department', 'tags', 'activity_logs'
+                ).all().order_by('-id')
+
+                # Phân quyền theo vai trò
+                is_staff = r_name in ("ADMIN", "LECTURER")
+                if not is_staff:
+                    if u_id:
+                        u_obj = DjUser.objects.filter(id=u_id).first()
+                        perm_q = Q(permission_type=DocumentPermission.USER, user_id=u_id, can_view=True)
+                        if u_obj and u_obj.student_class_id:
+                            perm_q |= Q(permission_type=DocumentPermission.CLASS, student_class_id=u_obj.student_class_id, can_view=True)
+                        if u_obj and u_obj.department_id:
+                            perm_q |= Q(permission_type=DocumentPermission.DEPARTMENT, department_id=u_obj.department_id, can_view=True)
+                        permitted_ids = set(DocumentPermission.objects.filter(perm_q).values_list('document_id', flat=True))
+
+                        qs = qs.filter(
+                            Q(status=DjDoc.APPROVED, is_public=True) |
+                            Q(status=DjDoc.APPROVED, id__in=permitted_ids)
+                        ).distinct()
+                    else:
+                        qs = qs.filter(status=DjDoc.APPROVED, is_public=True)
+
+                loaded_docs = []
+                for d in qs:
+                    d_id = str(d.id)
+                    s_name = d.subject.subject_name if d.subject else "Tài liệu chung"
+                    dept_name = d.subject.department.department_name if (d.subject and d.subject.department) else "Cong nghe thong tin"
+                    f_name = d.folder.folder_name if d.folder else "Tài liệu chung"
+                    status = str(d.status).upper()
+                    u_name = d.uploader.full_name if (d.uploader and hasattr(d.uploader, 'full_name') and d.uploader.full_name) else (d.uploader.username if d.uploader else "DocUni")
+                    created = d.created_at.strftime('%Y-%m-%d %H:%M') if d.created_at else ""
+
+                    latest_ver = d.latest_version
+                    str_file = str(latest_ver.file) if (latest_ver and latest_ver.file) else ""
+                    fname = os.path.basename(str_file) if str_file else f"document_{d_id}.pdf"
+                    fsize = "2.0 MB"
+
+                    tags_list = [t.tag_name for t in d.tags.all()] if hasattr(d, 'tags') else ["học liệu"]
+                    if not tags_list:
+                        tags_list = ["học liệu", "docuni"]
+                    tag_str = "  ".join(f"#{t}" for t in tags_list)
+
+                    doc_perms = [p for p in d.permissions.all() if p.can_view]
+                    allowed_classes = [p.student_class.class_name for p in doc_perms if p.student_class]
+                    allowed_departments = [p.department.department_name for p in doc_perms if p.department]
+
+                    versions_list = []
+                    for v in d.versions.all():
+                        v_str = str(v.file) if v.file else ""
+                        v_fname = os.path.basename(v_str) if v_str else fname
+                        v_user = v.updated_by.full_name if (v.updated_by and hasattr(v.updated_by, 'full_name') and v.updated_by.full_name) else (v.updated_by.username if v.updated_by else u_name)
+                        versions_list.append({
+                            "version": f"v{v.version_number}.0",
+                            "file_name": v_fname,
+                            "change_summary": v.change_summary or "Bản cập nhật",
+                            "uploaded_at": v.updated_at.strftime('%Y-%m-%d %H:%M') if v.updated_at else created,
+                            "file_size": fsize,
+                            "uploader_name": v_user,
+                        })
+                    if not versions_list:
+                        versions_list = [{"version": "v1.0", "file_name": fname, "change_summary": "Bản khởi tạo", "uploaded_at": created, "file_size": fsize, "uploader_name": u_name}]
+
+                    act_list = []
+                    for log in d.activity_logs.all():
+                        log_u = log.user.full_name if (log.user and hasattr(log.user, 'full_name') and log.user.full_name) else (log.user.username if log.user else "Hệ thống")
+                        act_list.append({
+                            "id": f"log_{log.id}",
+                            "action": log.action,
+                            "user_name": log_u,
+                            "description": log.description or "",
+                            "timestamp": log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at else created,
+                        })
+                    if not act_list:
+                        act_list = [{"id": f"log_{d_id}", "action": "CREATE", "user_name": u_name, "description": "Tải lên học liệu", "timestamp": created}]
+
+                    reject_reason = ""
+                    if d.status == 'REJECTED':
+                        rej_log = next((l for l in d.activity_logs.all() if l.action == 'REJECT'), None)
+                        if rej_log and rej_log.description:
+                            desc = rej_log.description
+                            reject_reason = desc.replace('Từ chối duyệt: ', '').strip() if desc.startswith('Từ chối duyệt: ') else desc
+
+                    loaded_docs.append({
+                        "id": d_id,
+                        "title": d.title,
+                        "subject_code": s_name,
+                        "subject_name": s_name,
+                        "faculty": dept_name,
+                        "folder_path": f"{s_name} / {f_name}",
+                        "folder_name": f_name,
+                        "doc_type": "TEXTBOOK",
+                        "type_label": "Học liệu",
+                        "type_color": "blue",
+                        "icon": "file-text",
+                        "current_version": f"v{latest_ver.version_number}.0" if latest_ver else "v1.0",
+                        "file_name": fname,
+                        "file_size": fsize,
+                        "uploader_name": u_name,
+                        "uploader_id": str(d.uploader_id or "1"),
+                        "uploader_class": "Lớp D21CQCN01-A",
+                        "status": status,
+                        "is_public": bool(d.is_public),
+                        "allowed_classes": allowed_classes,
+                        "allowed_departments": allowed_departments,
+                        "downloads": int(d.download_count or 0),
+                        "views": int(d.view_count or 0),
+                        "submitted_at": created,
+                        "reviewed_at": created,
+                        "reviewer": "TS. Nguyễn Văn An",
+                        "reject_reason": reject_reason,
+                        "description": d.description or f"Tài liệu môn học {s_name}",
+                        "tags": tags_list,
+                        "tag_str": tag_str,
+                        "preview_text": d.description or d.title,
+                        "matched_snippet": "",
+                        "versions": versions_list,
+                        "activity_logs": act_list,
+                    })
+                return loaded_docs
+
+            self.documents = await asyncio.to_thread(_fetch_from_orm, auth_user_id, auth_role)
+            self.is_loading = False
+            self.load_error = ""
+            return
+        except Exception as exc:
+            # Cả API lẫn ORM đều gặp lỗi -> Tuyệt đối không hiển thị INITIAL_DOCUMENTS hoặc mock data
+            self.documents = []
+            self.is_loading = False
+            self.load_error = f"Không thể tải dữ liệu từ PostgreSQL qua API backend ({api_error_detail or str(exc)}). Vui lòng kiểm tra kết nối hệ thống."
 
     # ── Computed Variables ───────────────────────────────────────────────────
 
@@ -736,17 +967,23 @@ class GlobalDocState(rx.State):
         - Nếu công khai (is_public=True): Cho phép tất cả.
         - Nếu phân quyền riêng (is_public=False):
           + Giảng viên / Admin: Luôn mở được.
-          + Sinh viên: Chỉ mở được nếu Lớp của sinh viên nằm trong `allowed_classes`.
-          + Nếu không thuộc lớp: Hiển thị Popup 403 Cảnh báo từ chối truy cập!
+          + Sinh viên: Chỉ mở được nếu Lớp / Khoa của sinh viên nằm trong danh sách cấp quyền hoặc là tác giả.
+          + Nếu không thuộc quyền: Hiển thị Popup 403 Cảnh báo từ chối truy cập!
         """
-        doc = next((d for d in self.documents if d["id"] == doc_id), None)
+        doc = next((d for d in self.documents if str(d.get("id")) == str(doc_id)), None)
         if not doc:
             return rx.toast.error("Không tìm thấy tài liệu!")
 
         user = self.current_user
-        role = user.get("role", "STUDENT")
+        role = getattr(self, "current_user_role", "") or user.get("role", "STUDENT")
+        user_name = getattr(self, "current_user_name", "") or user.get("full_name", "")
         user_class = user.get("class_name", "")
+        user_dept = user.get("department", "")
+        current_uid = str(user.get("id", ""))
+        uploader_id = str(doc.get("uploader_id", ""))
+
         allowed = doc.get("allowed_classes", [])
+        allowed_depts = doc.get("allowed_departments", [])
 
         # Kiểm tra điều kiện mở
         has_access = False
@@ -754,7 +991,11 @@ class GlobalDocState(rx.State):
             has_access = True
         elif role in ["LECTURER", "ADMIN"]:
             has_access = True
+        elif current_uid and current_uid == uploader_id:
+            has_access = True
         elif user_class and user_class in allowed:
+            has_access = True
+        elif not allowed and user_dept and user_dept in allowed_depts:
             has_access = True
 
         if has_access:
@@ -764,19 +1005,21 @@ class GlobalDocState(rx.State):
             doc.setdefault("activity_logs", []).insert(0, {
                 "id": f"log_v_{datetime.now().timestamp()}",
                 "action": "VIEW",
-                "user_name": user.get("full_name", "Ẩn danh"),
+                "user_name": user_name,
                 "description": f"Xem nội dung tài liệu (Quyền: {role})",
                 "timestamp": now_str,
             })
             self.active_doc = doc
             self.detail_modal_open = True
+            self.acl_denied_open = False
         else:
             # 🚫 TỪ CHỐI TRUY CẬP (ACCESS DENIED - 403)
+            self.detail_modal_open = False
             self.acl_denied_doc_title = doc.get("title", "")
-            self.acl_denied_target_class = ", ".join(allowed) if allowed else "Chỉ định bởi Giảng viên"
+            self.acl_denied_target_class = ", ".join(allowed) if allowed else (", ".join(allowed_depts) if allowed_depts else "Chỉ định bởi Giảng viên")
             self.acl_denied_current_class = user_class if user_class else "Chưa gán lớp"
             self.acl_denied_open = True
-            return rx.toast.error(f"Từ chối truy cập (403): Bạn thuộc {user_class}, không có quyền mở tài liệu này!")
+            return rx.toast.error(f"Từ chối truy cập (403): Bạn thuộc {user_class or 'lớp khác'}, không có quyền mở tài liệu này!")
 
     def close_detail_modal(self):
         self.detail_modal_open = False
@@ -815,7 +1058,10 @@ class GlobalDocState(rx.State):
 
         try:
             import httpx
-            httpx.post(f"http://127.0.0.1:8000/api/documents/{doc_id}/approve/", timeout=5.0)
+            from .auth import AuthState
+            token = getattr(AuthState, 'auth_token', '')
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            httpx.post(f"http://127.0.0.1:8000/api/documents/{doc_id}/approve/", headers=headers, timeout=5.0)
         except Exception:
             try:
                 from documents.models import Document as DjDoc
@@ -869,7 +1115,10 @@ class GlobalDocState(rx.State):
 
         try:
             import httpx
-            httpx.post(f"http://127.0.0.1:8000/api/documents/{doc_id}/reject/", json={"reason": reason_val}, timeout=5.0)
+            from .auth import AuthState
+            token = getattr(AuthState, 'auth_token', '')
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            httpx.post(f"http://127.0.0.1:8000/api/documents/{doc_id}/reject/", json={"reason": reason_val}, headers=headers, timeout=5.0)
         except Exception:
             try:
                 from documents.models import Document as DjDoc
@@ -1032,6 +1281,8 @@ class GlobalDocState(rx.State):
         allowed_class: str = "",
         file_size: str = "4.5 MB",
         file_url: str = "",
+        uploader_id: int = 0,
+        uploader_name: str = "",
     ):
         """Sinh viên nộp tài liệu mới $\to$ Tạo bản ghi PENDING vào hàng đợi duyệt."""
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -1041,6 +1292,9 @@ class GlobalDocState(rx.State):
         allowed_classes = [allowed_class] if allowed_class else []
         actual_fname = file_name if file_name else f"{subject_code}_TaiLieu_v1.pdf"
         actual_furl = file_url if file_url else f"/_upload/{actual_fname}"
+
+        eff_uploader_name = uploader_name or user.get("full_name", "Sinh viên")
+        eff_uploader_id = str(uploader_id) if uploader_id else str(user.get("id", "u1"))
 
         new_doc = {
             "id": doc_id,
@@ -1058,8 +1312,8 @@ class GlobalDocState(rx.State):
             "file_name": actual_fname,
             "file_size": file_size if file_size else "4.5 MB",
             "file_url": actual_furl,
-            "uploader_name": user.get("full_name", "Sinh viên"),
-            "uploader_id": user.get("id", "u1"),
+            "uploader_name": eff_uploader_name,
+            "uploader_id": eff_uploader_id,
             "uploader_class": user.get("class_name", ""),
             "status": "PENDING",  # Mặc định Chờ duyệt
             "is_public": is_public,
@@ -1112,7 +1366,11 @@ class GlobalDocState(rx.State):
                 if s_obj:
                     sub_id = s_obj.id
 
-            uploader = DjUser.objects.filter(role_id=3).first() or DjUser.objects.first()
+            uploader = None
+            if uploader_id:
+                uploader = DjUser.objects.filter(id=uploader_id).first()
+            if not uploader:
+                uploader = DjUser.objects.filter(role_id=3).first() or DjUser.objects.first()
             folder_obj = DjFolder.objects.filter(folder_name__icontains=folder_name, subject_id=sub_id).first()
             folder_id = folder_obj.id if folder_obj else None
 

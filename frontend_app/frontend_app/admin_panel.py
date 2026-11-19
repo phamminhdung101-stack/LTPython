@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import List, Optional
 import reflex as rx
 from .common_components import status_badge
-from .auth import AuthState
+from .auth import AuthState, login_page
 
 
 # ─── Dataclass Models ─────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ class AdminUser:
 # ─── Initial Options ──────────────────────────────────────────────────────────
 
 ROLE_OPTIONS = ["ADMIN", "LECTURER", "STUDENT"]
-DEPARTMENT_OPTIONS = ["CNTT", "KT", "NN", "DHB"]
+DEPARTMENT_OPTIONS = ["Cong nghe thong tin", "Kinh te", "Ngoai ngu"]
 STATUS_OPTIONS = ["ACTIVE", "INACTIVE"]
 
 
@@ -59,7 +59,7 @@ class AdminUserState(rx.State):
     form_email: str = ""
     form_password: str = ""
     form_role: str = "STUDENT"
-    form_dept: str = "CNTT"
+    form_dept: str = "Cong nghe thong tin"
     form_class: str = ""
     form_active: bool = True
     form_error: str = ""
@@ -249,7 +249,7 @@ class AdminUserState(rx.State):
         self.form_email = ""
         self.form_password = ""
         self.form_role = "STUDENT"
-        self.form_dept = "CNTT"
+        self.form_dept = "Cong nghe thong tin"
         self.form_class = ""
         self.form_active = True
         self.form_error = ""
@@ -626,10 +626,9 @@ def user_form_modal() -> rx.Component:
                         rx.select.root(
                             rx.select.trigger(width="100%", size="2"),
                             rx.select.content(
-                                rx.select.item("Khoa CNTT", value="CNTT"),
-                                rx.select.item("Khoa Kinh tế", value="KT"),
-                                rx.select.item("Khoa Ngoại ngữ", value="NN"),
-                                rx.select.item("Khoa Điều hành bay", value="DHB"),
+                                rx.select.item("Cong nghe thong tin", value="Cong nghe thong tin"),
+                                rx.select.item("Kinh te", value="Kinh te"),
+                                rx.select.item("Ngoai ngu", value="Ngoai ngu"),
                             ),
                             value=AdminUserState.form_dept,
                             on_change=AdminUserState.set_form_dept,
@@ -932,9 +931,11 @@ def admin_page_wrapper(content: rx.Component, current_route: str = "") -> rx.Com
 # ─── Main User Management Page ────────────────────────────────────────────────
 
 def admin_users_page() -> rx.Component:
-    return admin_page_wrapper(
-        rx.vstack(
-            # ── Header ──
+    return rx.cond(
+        AuthState.is_logged_in & (AuthState.current_user_role != ""),
+        admin_page_wrapper(
+            rx.vstack(
+                # ── Header ──
             rx.hstack(
                 rx.hstack(
                     rx.box(
@@ -1030,10 +1031,9 @@ def admin_users_page() -> rx.Component:
                             rx.select.trigger(placeholder="Khoa", size="3", width="180px"),
                             rx.select.content(
                                 rx.select.item("Tất cả Khoa", value="ALL"),
-                                rx.select.item("Khoa CNTT", value="CNTT"),
-                                rx.select.item("Khoa Kinh tế", value="KT"),
-                                rx.select.item("Khoa Ngoại ngữ", value="NN"),
-                                rx.select.item("Khoa Điều hành bay", value="DHB"),
+                                rx.select.item("Cong nghe thong tin", value="Cong nghe thong tin"),
+                                rx.select.item("Kinh te", value="Kinh te"),
+                                rx.select.item("Ngoai ngu", value="Ngoai ngu"),
                             ),
                             value=AdminUserState.filter_dept,
                             on_change=AdminUserState.set_filter_dept,
@@ -1107,4 +1107,6 @@ def admin_users_page() -> rx.Component:
             spacing="5", width="100%",
         ),
         current_route="/admin/users",
-    )
+    ),
+    login_page(),
+)

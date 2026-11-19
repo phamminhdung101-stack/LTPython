@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import List
 import reflex as rx
 from .admin_panel import admin_page_wrapper
+from .auth import AuthState, login_page
 
 
 # ─── Dataclass Models ─────────────────────────────────────────────────────────
@@ -104,14 +105,14 @@ class OrgState(rx.State):
     show_subject_modal: bool = False
     subj_form_code: str = ""
     subj_form_name: str = ""
-    subj_form_dept: str = "CNTT"
+    subj_form_dept: str = "Cong nghe thong tin"
     subj_form_credits: str = "3"
     subj_form_error: str = ""
 
     # Add Class
     show_class_modal: bool = False
     class_form_name: str = ""
-    class_form_dept: str = "CNTT"
+    class_form_dept: str = "Cong nghe thong tin"
     class_form_year: str = ""
     class_form_error: str = ""
 
@@ -413,7 +414,7 @@ class OrgState(rx.State):
     def open_subject_modal(self):
         self.subj_form_code = ""
         self.subj_form_name = ""
-        self.subj_form_dept = "CNTT"
+        self.subj_form_dept = "Cong nghe thong tin"
         self.subj_form_credits = "3"
         self.subj_form_error = ""
         self.show_subject_modal = True
@@ -437,7 +438,7 @@ class OrgState(rx.State):
         if not self.subj_form_code.strip() or not self.subj_form_name.strip():
             self.subj_form_error = "Mã môn và Tên môn không được để trống."
             return
-        dept = next((d for d in self.departments if d.code == self.subj_form_dept), None)
+        dept = next((d for d in self.departments if d.code == self.subj_form_dept or d.name == self.subj_form_dept), None)
         dept_name = dept.name if dept else self.subj_form_dept
         new_subj = Subject(
             id=f"s{len(self.subjects)+1}",
@@ -454,7 +455,7 @@ class OrgState(rx.State):
     # ── Class CRUD ──
     def open_class_modal(self):
         self.class_form_name = ""
-        self.class_form_dept = "CNTT"
+        self.class_form_dept = "Cong nghe thong tin"
         self.class_form_year = str(datetime.now().year)
         self.class_form_error = ""
         self.show_class_modal = True
@@ -914,10 +915,9 @@ def add_subject_modal() -> rx.Component:
                     rx.select.root(
                         rx.select.trigger(width="100%", size="2"),
                         rx.select.content(
-                            rx.select.item("Khoa CNTT", value="CNTT"),
-                            rx.select.item("Khoa Kinh tế", value="KT"),
-                            rx.select.item("Khoa Ngoại ngữ", value="NN"),
-                            rx.select.item("Khoa Điều hành bay", value="DHB"),
+                            rx.select.item("Cong nghe thong tin", value="Cong nghe thong tin"),
+                            rx.select.item("Kinh te", value="Kinh te"),
+                            rx.select.item("Ngoai ngu", value="Ngoai ngu"),
                         ),
                         value=OrgState.subj_form_dept,
                         on_change=OrgState.set_subj_dept,
@@ -980,10 +980,9 @@ def add_class_modal() -> rx.Component:
                     rx.select.root(
                         rx.select.trigger(width="100%", size="2"),
                         rx.select.content(
-                            rx.select.item("Khoa CNTT", value="CNTT"),
-                            rx.select.item("Khoa Kinh tế", value="KT"),
-                            rx.select.item("Khoa Ngoại ngữ", value="NN"),
-                            rx.select.item("Khoa Điều hành bay", value="DHB"),
+                            rx.select.item("Cong nghe thong tin", value="Cong nghe thong tin"),
+                            rx.select.item("Kinh te", value="Kinh te"),
+                            rx.select.item("Ngoai ngu", value="Ngoai ngu"),
                         ),
                         value=OrgState.class_form_dept,
                         on_change=OrgState.set_class_dept,
@@ -1164,9 +1163,11 @@ def org_delete_dialog() -> rx.Component:
 # ─── Main Page ────────────────────────────────────────────────────────────────
 
 def admin_organization_page() -> rx.Component:
-    return admin_page_wrapper(
-        rx.vstack(
-            # Header
+    return rx.cond(
+        AuthState.is_logged_in & (AuthState.current_user_role != ""),
+        admin_page_wrapper(
+            rx.vstack(
+                # Header
             rx.hstack(
                 rx.hstack(
                     rx.box(
@@ -1237,10 +1238,9 @@ def admin_organization_page() -> rx.Component:
                             rx.select.trigger(placeholder="Lọc theo Khoa", size="2", width="200px"),
                             rx.select.content(
                                 rx.select.item("Tất cả Khoa", value="ALL"),
-                                rx.select.item("Khoa CNTT", value="CNTT"),
-                                rx.select.item("Khoa Kinh tế", value="KT"),
-                                rx.select.item("Khoa Ngoại ngữ", value="NN"),
-                                rx.select.item("Khoa Điều hành bay", value="DHB"),
+                                rx.select.item("Cong nghe thong tin", value="Cong nghe thong tin"),
+                                rx.select.item("Kinh te", value="Kinh te"),
+                                rx.select.item("Ngoai ngu", value="Ngoai ngu"),
                             ),
                             value=OrgState.subject_dept_filter,
                             on_change=OrgState.set_subject_dept_filter,
@@ -1276,10 +1276,9 @@ def admin_organization_page() -> rx.Component:
                             rx.select.trigger(placeholder="Lọc theo Khoa", size="2", width="200px"),
                             rx.select.content(
                                 rx.select.item("Tất cả Khoa", value="ALL"),
-                                rx.select.item("Khoa CNTT", value="CNTT"),
-                                rx.select.item("Khoa Kinh tế", value="KT"),
-                                rx.select.item("Khoa Ngoại ngữ", value="NN"),
-                                rx.select.item("Khoa Điều hành bay", value="DHB"),
+                                rx.select.item("Cong nghe thong tin", value="Cong nghe thong tin"),
+                                rx.select.item("Kinh te", value="Kinh te"),
+                                rx.select.item("Ngoai ngu", value="Ngoai ngu"),
                             ),
                             value=OrgState.class_dept_filter,
                             on_change=OrgState.set_class_dept_filter,
@@ -1384,4 +1383,6 @@ def admin_organization_page() -> rx.Component:
             spacing="5", width="100%",
         ),
         current_route="/admin/organization",
-    )
+    ),
+    login_page(),
+)

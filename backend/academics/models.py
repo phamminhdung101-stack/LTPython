@@ -15,6 +15,10 @@ class Department(models.Model):
     def __str__(self):
         return self.department_name
 
+    @property
+    def department_id(self):
+        return self.id
+
 
 class Class(models.Model):
     """Lớp / Khóa học"""
@@ -37,6 +41,10 @@ class Class(models.Model):
     def __str__(self):
         return self.class_name
 
+    @property
+    def class_id(self):
+        return self.id
+
 
 class Subject(models.Model):
     """Môn học"""
@@ -58,3 +66,7 @@ class Subject(models.Model):
 
     def __str__(self):
         return self.subject_name
+
+    @property
+    def subject_id(self):
+        return self.id

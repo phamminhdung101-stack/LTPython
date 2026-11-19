@@ -17,6 +17,7 @@ import dataclasses
 from typing import List, Dict, Any
 import reflex as rx
 from .common_components import lecturer_page_wrapper
+from .auth import AuthState, login_page
 
 
 # ─── Dataclass Models ────────────────────────────────────────────────────────
@@ -54,11 +55,11 @@ CHART_DATA_30D = [
 ]
 
 TOP_DOCS_DATA = [
-    {"name": "IT101 Đề thi", "downloads": 1650},
-    {"name": "IT202 CTDL", "downloads": 1240},
-    {"name": "IT305 Slide", "downloads": 890},
-    {"name": "IT410 BTL", "downloads": 540},
-    {"name": "IT420 Sách", "downloads": 380},
+    {"name": "Lap trinh Java Đề thi", "downloads": 1650},
+    {"name": "Co so du lieu Slide", "downloads": 1240},
+    {"name": "Mang may tinh Bài giảng", "downloads": 890},
+    {"name": "Kinh te vi mo Bài tập", "downloads": 540},
+    {"name": "Ke toan dai cuong Tài liệu", "downloads": 380},
 ]
 
 CATEGORY_PIE_DATA = [
@@ -80,10 +81,13 @@ class LecturerDashboardState(rx.State):
     total_downloads: int = 83
     pending_count: int = 18
 
-    def load_data(self):
+    async def load_data(self):
         try:
             import httpx
-            resp = httpx.get("http://127.0.0.1:8000/api/dashboard/stats/", timeout=3.0)
+            from .auth import AuthState
+            auth = await self.get_state(AuthState)
+            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+            resp = httpx.get("http://127.0.0.1:8000/api/dashboard/stats/", headers=headers, timeout=3.0)
             if resp.status_code == 200:
                 data = resp.json()
                 stats = data.get("stats") or data.get("data") or {}
@@ -162,9 +166,11 @@ def activity_row(act: ActivityItem) -> rx.Component:
 # ─── Main Page ───────────────────────────────────────────────────────────────
 
 def lecturer_dashboard_page() -> rx.Component:
-    return lecturer_page_wrapper(
-        rx.vstack(
-            # ── Top Header & Actions ──
+    return rx.cond(
+        AuthState.is_logged_in & (AuthState.current_user_role != ""),
+        lecturer_page_wrapper(
+            rx.vstack(
+                # ── Top Header & Actions ──
             rx.hstack(
                 rx.vstack(
                     rx.hstack(
@@ -235,7 +241,7 @@ def lecturer_dashboard_page() -> rx.Component:
                             align="center",
                             width="100%",
                         ),
-                        rx.heading("5", size="6", weight="bold", color="slate.12"),
+                        rx.heading(LecturerDashboardState.total_docs.to_string(), size="6", weight="bold", color="slate.12"),
                         rx.text("Tổng học liệu phụ trách", size="2", color="slate.9"),
                         spacing="1",
                         align="start",
@@ -257,7 +263,7 @@ def lecturer_dashboard_page() -> rx.Component:
                             align="center",
                             width="100%",
                         ),
-                        rx.heading("11,720", size="6", weight="bold", color="indigo.11"),
+                        rx.heading(LecturerDashboardState.total_views.to_string(), size="6", weight="bold", color="indigo.11"),
                         rx.text("Tổng lượt xem tích lũy", size="2", color="slate.9"),
                         spacing="1",
                         align="start",
@@ -279,7 +285,7 @@ def lecturer_dashboard_page() -> rx.Component:
                             align="center",
                             width="100%",
                         ),
-                        rx.heading("4,700", size="6", weight="bold", color="green.11"),
+                        rx.heading(LecturerDashboardState.total_downloads.to_string(), size="6", weight="bold", color="green.11"),
                         rx.text("Tổng lượt tải xuống", size="2", color="slate.9"),
                         spacing="1",
                         align="start",
@@ -301,7 +307,7 @@ def lecturer_dashboard_page() -> rx.Component:
                             align="center",
                             width="100%",
                         ),
-                        rx.heading("2", size="6", weight="bold", color="amber.11"),
+                        rx.heading(LecturerDashboardState.pending_count.to_string(), size="6", weight="bold", color="amber.11"),
                         rx.text("Đóng góp chờ kiểm duyệt", size="2", color="slate.9"),
                         spacing="1",
                         align="start",
@@ -523,4 +529,6 @@ def lecturer_dashboard_page() -> rx.Component:
             width="100%",
         ),
         current_route="/lecturer/dashboard",
-    )
+    ),
+    login_page(),
+)

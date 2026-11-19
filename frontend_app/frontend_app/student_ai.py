@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 import reflex as rx
 from .common_components import student_page_wrapper
+from .auth import AuthState, login_page
 
 
 # ─── Dataclass Models Cho State & Dynamic Rendering ──────────────────────────
@@ -91,11 +92,13 @@ QUICK_PROMPTS = [
 
 SUBJECT_FILTERS = [
     {"label": "Tất cả học phần (Toàn trường)", "value": "ALL"},
-    {"label": "IT202 - Cấu trúc dữ liệu & GT", "value": "IT202"},
-    {"label": "ECO101 - Kinh tế vi mô", "value": "ECO101"},
-    {"label": "IT305 - Cơ sở dữ liệu", "value": "IT305"},
-    {"label": "ATC101 - Điều hành bay cơ bản", "value": "ATC101"},
-    {"label": "ENG201 - Tiếng Anh hàng không", "value": "ENG201"},
+    {"label": "Lap trinh Java", "value": "Lap trinh Java"},
+    {"label": "Co so du lieu", "value": "Co so du lieu"},
+    {"label": "Mang may tinh", "value": "Mang may tinh"},
+    {"label": "Kinh te vi mo", "value": "Kinh te vi mo"},
+    {"label": "Ke toan dai cuong", "value": "Ke toan dai cuong"},
+    {"label": "Tieng Anh chuyen nganh", "value": "Tieng Anh chuyen nganh"},
+    {"label": "Ngu phap co ban", "value": "Ngu phap co ban"},
 ]
 
 
@@ -146,11 +149,14 @@ class AIAssistantState(rx.State):
         self.input_text = prompt
         return self.send_message()
 
-    def load_history(self):
+    async def load_history(self):
         """Tải lịch sử câu hỏi của người dùng từ API PostgreSQL."""
         try:
             import httpx
-            resp = httpx.get("http://127.0.0.1:8000/api/ai/history/", timeout=3.0)
+            from .auth import AuthState
+            auth = await self.get_state(AuthState)
+            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+            resp = httpx.get("http://127.0.0.1:8000/api/ai/history/", headers=headers, timeout=3.0)
             if resp.status_code == 200:
                 data = resp.json()
                 self.past_queries = data.get("history", [])[:10]
@@ -181,7 +187,7 @@ class AIAssistantState(rx.State):
             citations=[],
         ))
 
-    def send_message(self):
+    async def send_message(self):
         text = self.input_text.strip()
         if not text:
             return rx.toast.error("Vui lòng nhập câu hỏi trước khi gửi!")
@@ -206,9 +212,12 @@ class AIAssistantState(rx.State):
         citations = []
         try:
             import httpx
+            from .auth import AuthState
+            auth = await self.get_state(AuthState)
+            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
             payload = {"query": text}
             # Gọi API chat RAG
-            resp = httpx.post("http://127.0.0.1:8000/api/ai/chat/", json=payload, timeout=12.0)
+            resp = httpx.post("http://127.0.0.1:8000/api/ai/chat/", json=payload, headers=headers, timeout=12.0)
             if resp.status_code == 200:
                 res_data = resp.json()
                 ai_content = res_data.get("answer", "")
@@ -634,8 +643,10 @@ def citation_modal() -> rx.Component:
 # ─── Main Page ───────────────────────────────────────────────────────────────
 
 def student_ai_page() -> rx.Component:
-    return student_page_wrapper(
-        rx.vstack(
+    return rx.cond(
+        AuthState.is_logged_in & (AuthState.current_user_role != ""),
+        student_page_wrapper(
+            rx.vstack(
             # ── Page Header ──
             rx.hstack(
                 rx.hstack(
@@ -890,4 +901,6 @@ def student_ai_page() -> rx.Component:
             width="100%",
         ),
         active_route="/student/ai-assistant",
-    )
+    ),
+    login_page(),
+)

@@ -18,6 +18,7 @@ from typing import List, Dict, Any
 import reflex as rx
 from .common_components import lecturer_page_wrapper, status_badge
 from .data_store import GlobalDocState
+from .auth import AuthState, login_page
 
 
 # ─── Dataclass Models ────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ class PendingDoc:
     title: str = ""
     subject_code: str = ""
     subject_name: str = ""
-    faculty: str = "CNTT"
+    faculty: str = "Cong nghe thong tin"
     proposed_folder: str = ""
     doc_type: str = "SLIDE"  # "TEXTBOOK", "SLIDE", "EXAM", "EXERCISE", "REFERENCE"
     type_label: str = "Slide"
@@ -54,10 +55,13 @@ class LecturerApprovalState(rx.State):
 
     items: List[PendingDoc] = []
 
-    def load_items(self):
+    async def load_items(self):
         try:
             import httpx
-            resp = httpx.get("http://127.0.0.1:8000/api/documents/", timeout=3.0)
+            from .auth import AuthState
+            auth = await self.get_state(AuthState)
+            headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+            resp = httpx.get("http://127.0.0.1:8000/api/documents/", headers=headers, timeout=4.0)
             if resp.status_code == 200:
                 raw_docs = resp.json().get("documents") or resp.json().get("data") or []
                 loaded = []
@@ -65,7 +69,7 @@ class LecturerApprovalState(rx.State):
                     d_id = str(d.get("id") or d.get("document_id"))
                     title = d.get("title", "")
                     s_name = d.get("subject_name") or d.get("subject", {}).get("subject_name", "")
-                    dept_name = d.get("department_name") or "CNTT"
+                    dept_name = d.get("department_name") or "Cong nghe thong tin"
                     status = str(d.get("status") or "PENDING").upper()
                     u_name = d.get("uploader_name") or "Sinh viên"
                     desc = d.get("description") or f"Tài liệu môn học {s_name}"
@@ -93,7 +97,7 @@ class LecturerApprovalState(rx.State):
                         student_class="D21CQCN01-B",
                         submitted_at=created,
                         status=status,
-                        review_feedback="",
+                        review_feedback=str(d.get("reject_reason") or ""),
                         version=str(d.get("latest_version") or "v1.0"),
                         preview_text=desc,
                     ))
@@ -105,45 +109,56 @@ class LecturerApprovalState(rx.State):
             pass
 
         try:
-            import os, sys
-            backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
-            if backend_dir not in sys.path:
-                sys.path.insert(0, backend_dir)
-            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
-            import django
-            django.setup()
-            from documents.models import Document
-            loaded = []
-            for d in Document.objects.select_related('subject__department', 'uploader').all():
-                d_id = str(d.id)
-                s_name = d.subject.subject_name if d.subject else ""
-                dept_name = d.subject.department.department_name if (d.subject and d.subject.department) else "CNTT"
-                u_name = d.uploader.full_name if (d.uploader and d.uploader.full_name) else (d.uploader.username if d.uploader else "Sinh viên")
-                created = d.created_at.strftime("%Y-%m-%d %H:%M") if d.created_at else ""
-                loaded.append(PendingDoc(
-                    id=d_id,
-                    title=d.title,
-                    subject_code=f"SUB_{d.subject_id}",
-                    subject_name=s_name,
-                    faculty=dept_name,
-                    proposed_folder="Kho tài liệu",
-                    doc_type="TEXTBOOK",
-                    type_label="Học liệu",
-                    type_color="blue",
-                    file_name=f"document_{d_id}.pdf",
-                    file_size="2.5 MB",
-                    description=d.description or f"Tài liệu môn học {s_name}",
-                    tags=["học liệu"],
-                    student_name=u_name,
-                    student_id=str(d.uploader_id or "SV01"),
-                    student_class="D21CQCN01-B",
-                    submitted_at=created,
-                    status=d.status,
-                    review_feedback="",
-                    version="v1.0",
-                    preview_text=d.description or d.title,
-                ))
-            self.items = loaded
+            import os, sys, asyncio
+            def _fetch_approval_items():
+                backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+                if backend_dir not in sys.path:
+                    sys.path.insert(0, backend_dir)
+                os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+                import django
+                django.setup()
+                from documents.models import Document
+                loaded = []
+                for d in Document.objects.select_related('subject__department', 'uploader').prefetch_related('activity_logs').all().order_by('-id'):
+                    d_id = str(d.id)
+                    s_name = d.subject.subject_name if d.subject else ""
+                    dept_name = d.subject.department.department_name if (d.subject and d.subject.department) else "Cong nghe thong tin"
+                    u_name = d.uploader.full_name if (d.uploader and hasattr(d.uploader, 'full_name') and d.uploader.full_name) else (d.uploader.username if d.uploader else "Sinh viên")
+                    created = d.created_at.strftime("%Y-%m-%d %H:%M") if d.created_at else ""
+                    status = str(d.status).upper()
+                    reject_reason = ""
+                    if status == "REJECTED":
+                        rej_log = next((l for l in d.activity_logs.all() if l.action == 'REJECT'), None)
+                        if rej_log and rej_log.description:
+                            desc = rej_log.description
+                            reject_reason = desc.replace('Từ chối duyệt: ', '').strip() if desc.startswith('Từ chối duyệt: ') else desc
+
+                    loaded.append(PendingDoc(
+                        id=d_id,
+                        title=d.title,
+                        subject_code=f"SUB_{d.subject_id}",
+                        subject_name=s_name,
+                        faculty=dept_name,
+                        proposed_folder="Kho tài liệu",
+                        doc_type="TEXTBOOK",
+                        type_label="Học liệu",
+                        type_color="blue",
+                        file_name=f"document_{d_id}.pdf",
+                        file_size="2.5 MB",
+                        description=d.description or f"Tài liệu môn học {s_name}",
+                        tags=["học liệu"],
+                        student_name=u_name,
+                        student_id=str(d.uploader_id or "SV01"),
+                        student_class="D21CQCN01-B",
+                        submitted_at=created,
+                        status=status,
+                        review_feedback=reject_reason,
+                        version="v1.0",
+                        preview_text=d.description or d.title,
+                    ))
+                return loaded
+
+            self.items = await asyncio.to_thread(_fetch_approval_items)
             if self.items and not self.selected_id:
                 self.selected_id = self.items[0].id
         except Exception:
@@ -222,28 +237,51 @@ class LecturerApprovalState(rx.State):
         return f"{int((approved / total) * 100)}%"
 
     # Thao tác Phê duyệt
-    def approve_doc(self, item_id: str):
+    async def approve_doc(self, item_id: str):
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+        api_success = False
         try:
             import httpx
-            httpx.post(f"http://127.0.0.1:8000/api/documents/{item_id}/approve/", timeout=5.0)
+            resp = httpx.post(f"http://127.0.0.1:8000/api/documents/{item_id}/approve/", headers=headers, timeout=5.0)
+            if resp.status_code == 200:
+                api_success = True
         except Exception:
-            try:
+            pass
+
+        if not api_success:
+            import os, sys, asyncio
+            def _approve_db(d_id, user_id):
+                backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+                if backend_dir not in sys.path:
+                    sys.path.insert(0, backend_dir)
+                os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+                import django
+                django.setup()
                 from documents.models import Document as DjDoc
-                DjDoc.objects.filter(id=item_id).update(status="APPROVED", is_public=True)
+                from documents.services import approve_document
+                from accounts.models import User as DjUser
+                doc = DjDoc.objects.filter(id=d_id).first()
+                u_obj = DjUser.objects.filter(id=user_id).first() if user_id else None
+                if not u_obj:
+                    u_obj = DjUser.objects.filter(role__role_name__in=['ADMIN', 'LECTURER']).first()
+                if doc and u_obj:
+                    approve_document(doc, u_obj)
+            try:
+                await asyncio.to_thread(_approve_db, item_id, auth.current_user_id)
             except Exception:
                 pass
 
-        updated = []
-        for d in self.items:
-            if d.id == item_id:
-                d.status = "APPROVED"
-                d.review_feedback = "Tài liệu đạt chuẩn chất lượng, đã được giảng viên phê duyệt đưa vào kho học liệu."
-            updated.append(d)
-        self.items = updated
-        return [
-            GlobalDocState.approve_document(item_id),
-            rx.toast.success("Đã phê duyệt tài liệu! Học liệu đã được xuất bản công khai trên kho."),
-        ]
+        # Reload dữ liệu database để đồng bộ trạng thái mới sang tất cả các trang
+        await self.load_items()
+        try:
+            g_state = await self.get_state(GlobalDocState)
+            await g_state.load_documents()
+        except Exception:
+            pass
+
+        return rx.toast.success("Đã phê duyệt tài liệu! Trạng thái đã được cập nhật vào database và xuất bản công khai.")
 
     # Thao tác Từ chối
     def open_reject_dialog(self, item_id: str):
@@ -255,35 +293,59 @@ class LecturerApprovalState(rx.State):
         self.show_reject_dialog = False
         self.reject_reason_input = ""
 
-    def confirm_reject(self):
+    async def confirm_reject(self):
         reason = self.reject_reason_input.strip()
         if not reason:
             return rx.toast.error("Vui lòng nhập lý do từ chối để phản hồi cho sinh viên!")
 
         doc_id = self.selected_id
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+        api_success = False
         try:
             import httpx
-            httpx.post(f"http://127.0.0.1:8000/api/documents/{doc_id}/reject/", json={"reason": reason}, timeout=5.0)
+            resp = httpx.post(f"http://127.0.0.1:8000/api/documents/{doc_id}/reject/", json={"reason": reason}, headers=headers, timeout=5.0)
+            if resp.status_code == 200:
+                api_success = True
         except Exception:
-            try:
+            pass
+
+        if not api_success:
+            import os, sys, asyncio
+            def _reject_db(d_id, user_id, r_text):
+                backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+                if backend_dir not in sys.path:
+                    sys.path.insert(0, backend_dir)
+                os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+                import django
+                django.setup()
                 from documents.models import Document as DjDoc
-                DjDoc.objects.filter(id=doc_id).update(status="REJECTED")
+                from documents.services import reject_document
+                from accounts.models import User as DjUser
+                doc = DjDoc.objects.filter(id=d_id).first()
+                u_obj = DjUser.objects.filter(id=user_id).first() if user_id else None
+                if not u_obj:
+                    u_obj = DjUser.objects.filter(role__role_name__in=['ADMIN', 'LECTURER']).first()
+                if doc and u_obj:
+                    reject_document(doc, u_obj, r_text)
+            try:
+                await asyncio.to_thread(_reject_db, doc_id, auth.current_user_id, reason)
             except Exception:
                 pass
 
-        updated = []
-        for d in self.items:
-            if d.id == doc_id:
-                d.status = "REJECTED"
-                d.review_feedback = reason
-            updated.append(d)
-        self.items = updated
         self.show_reject_dialog = False
         self.reject_reason_input = ""
-        return [
-            GlobalDocState.confirm_reject_document,
-            rx.toast.warning("Đã từ chối tài liệu và gửi phản hồi nhận xét cho sinh viên!"),
-        ]
+
+        # Reload dữ liệu database để đồng bộ trạng thái mới sang tất cả các trang
+        await self.load_items()
+        try:
+            g_state = await self.get_state(GlobalDocState)
+            await g_state.load_documents()
+        except Exception:
+            pass
+
+        return rx.toast.warning(f"Đã từ chối duyệt tài liệu: {reason}")
 
 
 # ─── UI Helper Components ────────────────────────────────────────────────────
@@ -422,9 +484,11 @@ def reject_reason_modal() -> rx.Component:
 def lecturer_approval_page() -> rx.Component:
     active = LecturerApprovalState.active_item
 
-    return lecturer_page_wrapper(
-        rx.vstack(
-            # ── Header Bar ──
+    return rx.cond(
+        AuthState.is_logged_in & (AuthState.current_user_role != ""),
+        lecturer_page_wrapper(
+            rx.vstack(
+                # ── Header Bar ──
             rx.hstack(
                 rx.vstack(
                     rx.hstack(
@@ -802,4 +866,6 @@ def lecturer_approval_page() -> rx.Component:
             width="100%",
         ),
         current_route="/lecturer/approval",
-    )
+    ),
+    login_page(),
+)
