@@ -17,14 +17,33 @@ def _json_ok(data=None, message: str = 'Thành công') -> JsonResponse:
     return JsonResponse({'status': 'ok', 'message': message, 'data': data}, json_dumps_params={'ensure_ascii': False})
 
 
+def _get_authenticated_user(request):
+    auth_header = request.headers.get('Authorization') or request.META.get('HTTP_AUTHORIZATION')
+    has_token = (auth_header and 'Bearer' in auth_header) or (hasattr(request, 'GET') and 'token' in request.GET)
+    if has_token:
+        try:
+            from accounts.authentication import JWTAuthentication
+            jwt_auth = JWTAuthentication()
+            auth_res = jwt_auth.authenticate(request)
+            if auth_res:
+                request.user = auth_res[0]
+                return auth_res[0]
+        except Exception:
+            pass
+    user = getattr(request, 'user', None)
+    if user and user.is_authenticated:
+        return user
+    return None
+
+
 @require_http_methods(["GET"])
 def dashboard_stats_api(request):
     """
     API Trả về toàn bộ số liệu thống kê quản trị.
     Chỉ Quản trị viên và Giảng viên được phép truy cập.
     """
-    user = request.user
-    if user.is_authenticated and getattr(user, 'is_student', False):
+    user = _get_authenticated_user(request)
+    if user and user.is_authenticated and getattr(user, 'is_student', False):
         return JsonResponse({'status': 'error', 'message': 'Chỉ Quản trị viên và Giảng viên mới có quyền xem thống kê.'}, status=403)
 
     from documents.models import DocumentActivityLog

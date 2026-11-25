@@ -39,6 +39,25 @@ def _json_ok(data=None, message: str = 'Thành công', status: int = 200) -> Jso
     return res
 
 
+def _get_authenticated_user(request):
+    auth_header = request.headers.get('Authorization') or request.META.get('HTTP_AUTHORIZATION')
+    has_token = (auth_header and 'Bearer' in auth_header) or (hasattr(request, 'GET') and 'token' in request.GET)
+    if has_token:
+        try:
+            from accounts.authentication import JWTAuthentication
+            jwt_auth = JWTAuthentication()
+            auth_res = jwt_auth.authenticate(request)
+            if auth_res:
+                request.user = auth_res[0]
+                return auth_res[0]
+        except Exception:
+            pass
+    user = getattr(request, 'user', None)
+    if user and user.is_authenticated:
+        return user
+    return None
+
+
 # ─── DEPARTMENTS API ─────────────────────────────────────────────────────────
 
 @csrf_exempt
@@ -64,7 +83,8 @@ def department_api(request):
         }, status=200, json_dumps_params={'ensure_ascii': False})
 
     # POST: Tạo khoa mới (Admin only)
-    if not (request.user.is_authenticated and getattr(request.user, 'is_admin', False)):
+    user = _get_authenticated_user(request)
+    if not (user and getattr(user, 'is_admin', False)):
         return _json_error("Chỉ Quản trị viên mới có quyền tạo Khoa.", 403)
 
     name = request.POST.get('department_name', '').strip()
@@ -95,7 +115,7 @@ def department_detail_api(request, pk):
     - DELETE: Xóa khoa khi không vi phạm ràng buộc dữ liệu (không có môn học, lớp học)
     """
     dept = get_object_or_404(Department, pk=pk)
-    user = request.user
+    user = _get_authenticated_user(request)
 
     if request.method == "GET":
         subs = dept.subjects.all()
@@ -185,7 +205,8 @@ def class_api(request):
         }, status=200, json_dumps_params={'ensure_ascii': False})
 
     # POST: Tạo lớp mới (Admin only)
-    if not (request.user.is_authenticated and getattr(request.user, 'is_admin', False)):
+    user = _get_authenticated_user(request)
+    if not (user and getattr(user, 'is_admin', False)):
         return _json_error("Chỉ Quản trị viên mới có quyền tạo Lớp.", 403)
 
     name = request.POST.get('class_name', '').strip()
@@ -225,7 +246,8 @@ def class_api(request):
 @require_http_methods(["PATCH", "POST"])
 def class_toggle_lock_api(request, pk):
     """Khóa hoặc mở khóa lớp học."""
-    if not (request.user.is_authenticated and getattr(request.user, 'is_admin', False)):
+    user = _get_authenticated_user(request)
+    if not (user and getattr(user, 'is_admin', False)):
         return _json_error("Chỉ Quản trị viên mới có quyền khóa/mở khóa lớp.", 403)
 
     cls = get_object_or_404(Class, pk=pk)
@@ -250,7 +272,7 @@ def class_detail_api(request, pk):
     - DELETE: Xóa lớp khi không có sinh viên
     """
     cls = get_object_or_404(Class.objects.select_related('department'), pk=pk)
-    user = request.user
+    user = _get_authenticated_user(request)
 
     if request.method == "GET":
         from accounts.models import User as DjUser
@@ -321,7 +343,7 @@ def class_detail_api(request, pk):
 def subject_api(request):
     if request.method == "GET":
         dept_id = request.GET.get('department_id')
-        qs = Subject.objects.select_related('department').order_by('subject_name')
+        qs = Subject.objects.select_related('department').annotate(doc_count=Count('documents')).order_by('subject_name')
         if dept_id:
             qs = qs.filter(department_id=dept_id)
 
@@ -331,6 +353,8 @@ def subject_api(request):
             'subject_name': s.subject_name,
             'department_id': s.department_id,
             'department_name': s.department.department_name if s.department else '',
+            'doc_count': getattr(s, 'doc_count', 0),
+            'total_docs': getattr(s, 'doc_count', 0),
             'department': {
                 'department_id': s.department_id,
                 'department_name': s.department.department_name if s.department else '',
@@ -344,7 +368,8 @@ def subject_api(request):
         }, status=200, json_dumps_params={'ensure_ascii': False})
 
     # POST: Tạo môn học mới
-    if not (request.user.is_authenticated and getattr(request.user, 'is_admin', False)):
+    user = _get_authenticated_user(request)
+    if not (user and getattr(user, 'is_admin', False)):
         return _json_error("Chỉ Quản trị viên mới có quyền tạo môn học.", 403)
 
     name = request.POST.get('subject_name', '').strip()
@@ -387,7 +412,7 @@ def subject_detail_api(request, pk):
     - DELETE: Xóa môn học khi không vi phạm ràng buộc (không có tài liệu)
     """
     sub = get_object_or_404(Subject.objects.select_related('department'), pk=pk)
-    user = request.user
+    user = _get_authenticated_user(request)
 
     if request.method == "GET":
         doc_count = sub.documents.count()

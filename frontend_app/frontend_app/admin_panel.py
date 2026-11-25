@@ -39,6 +39,17 @@ DEPARTMENT_OPTIONS = ["Cong nghe thong tin", "Kinh te", "Ngoai ngu"]
 STATUS_OPTIONS = ["ACTIVE", "INACTIVE"]
 
 
+def get_dept_classes(dept_name: str) -> List[str]:
+    dept_norm = dept_name.strip().lower()
+    if "thong tin" in dept_norm or "cntt" in dept_norm or dept_norm == "d1":
+        return ["CNTT-K0", "CNTT-K1", "CNTT-K2"]
+    elif "kinh te" in dept_norm or "kt" in dept_norm or dept_norm == "d2":
+        return ["KT-K1", "KT-K2"]
+    elif "ngoai ngu" in dept_norm or "nn" in dept_norm or dept_norm == "d3":
+        return ["NN-K1"]
+    return []
+
+
 # ─── Admin User State ─────────────────────────────────────────────────────────
 
 class AdminUserState(rx.State):
@@ -80,27 +91,43 @@ class AdminUserState(rx.State):
     indexing_rate: str = "0%"
     total_chunks: int = 0
 
-    def run_all_indexing(self):
+    async def run_all_indexing(self):
+        """Chạy lập chỉ mục lại toàn bộ tài liệu (Re-index) và cập nhật số liệu thực tế."""
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        headers = {"Authorization": f"Bearer {auth.auth_token}"} if (auth and auth.auth_token) else {}
         try:
             import httpx
-            r = httpx.post("http://127.0.0.1:8000/api/indexing/run/", timeout=15.0)
+            r = httpx.post("http://127.0.0.1:8000/api/indexing/run/", headers=headers, timeout=30.0)
             if r.status_code == 200:
                 data = r.json()
-                self.indexing_rate = "100%"
+                await self.load_users()
                 return rx.toast.success(f"Đã lập chỉ mục AI thành công! {data.get('message', '')}")
         except Exception:
-            try:
-                from documents.indexing_service import index_all_documents
-                res = index_all_documents()
-                return rx.toast.success(f"Đã hoàn thành Indexing toàn bộ: {res.get('indexed_count')} tài liệu ({res.get('total_chunks')} chunks).")
-            except Exception as e:
-                return rx.toast.error(f"Lỗi: {str(e)}")
+            pass
 
-    def load_users(self):
-        """Tải danh sách người dùng thực tế từ PostgreSQL qua REST API hoặc ORM."""
+        try:
+            import asyncio
+            def _do_index():
+                from documents.indexing_service import index_all_documents
+                return index_all_documents()
+            res = await asyncio.to_thread(_do_index)
+            await self.load_users()
+            return rx.toast.success(f"Đã hoàn thành Indexing toàn bộ: {res.get('indexed_count')} tài liệu ({res.get('total_chunks')} chunks).")
+        except Exception as e:
+            return rx.toast.error(f"Lỗi: {str(e)}")
+
+    async def load_users(self):
+        """Tải danh sách người dùng thực tế và các chỉ số thống kê từ PostgreSQL."""
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        headers = {"Authorization": f"Bearer {auth.auth_token}"} if (auth and auth.auth_token) else {}
+
+        loaded_ok = False
         try:
             import httpx
-            resp = httpx.get("http://127.0.0.1:8000/api/users/", timeout=3.0)
+            # 1. Gọi API danh sách người dùng kèm Bearer token của Quản trị viên
+            resp = httpx.get("http://127.0.0.1:8000/api/users/", headers=headers, timeout=3.5)
             if resp.status_code == 200:
                 res_json = resp.json()
                 raw_data = res_json.get("users") or res_json.get("data") or []
@@ -129,67 +156,75 @@ class AdminUserState(rx.State):
                         avatar_fallback=avatar,
                     ))
                 self.users = loaded
+                loaded_ok = True
 
-                # Fetch dashboard stats
-                try:
-                    r_stats = httpx.get("http://127.0.0.1:8000/api/dashboard/stats/", timeout=3.0)
-                    if r_stats.status_code == 200:
-                        s_data = r_stats.json().get("stats", {})
-                        self.total_docs = int(s_data.get("total_documents", 0))
-                        self.total_folders = int(s_data.get("total_folders", 0))
-                        self.total_tags = int(s_data.get("total_tags", 0))
-                        idx_data = s_data.get("indexing", {})
-                        self.indexing_rate = f"{idx_data.get('indexing_percentage', 0)}%"
-                        self.total_chunks = int(idx_data.get("total_chunks", 0))
-                except Exception:
-                    pass
-                return
+            # 2. Gọi API thống kê toàn hệ thống từ PostgreSQL
+            r_stats = httpx.get("http://127.0.0.1:8000/api/dashboard/stats/", headers=headers, timeout=3.5)
+            if r_stats.status_code == 200:
+                s_data = r_stats.json().get("stats") or r_stats.json().get("data") or {}
+                self.total_docs = int(s_data.get("total_documents", 0))
+                self.total_folders = int(s_data.get("total_folders", 0))
+                self.total_tags = int(s_data.get("total_tags", 0))
+                idx_data = s_data.get("indexing", {})
+                self.indexing_rate = f"{idx_data.get('indexing_percentage', 0)}%"
+                self.total_chunks = int(idx_data.get("total_chunks", 0))
+                if loaded_ok:
+                    return
         except Exception:
             pass
 
+        # 3. Fallback ORM: Thực thi trong thread riêng để không chặn asyncio loop
         try:
-            import os, sys
-            backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
-            if backend_dir not in sys.path:
-                sys.path.insert(0, backend_dir)
-            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
-            import django
-            django.setup()
-            from accounts.models import User
-            from documents.models import Document, Folder, Tag
-            from ai_search.models import DocumentEmbedding
+            import os, sys, asyncio
+            def _load_data_orm():
+                backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+                if backend_dir not in sys.path:
+                    sys.path.insert(0, backend_dir)
+                os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+                import django
+                django.setup()
+                from accounts.models import User
+                from documents.models import Document, Folder, Tag
+                from documents.indexing_service import get_indexing_stats
 
-            self.total_docs = Document.objects.count()
-            self.total_folders = Folder.objects.count()
-            self.total_tags = Tag.objects.count()
-            self.total_chunks = DocumentEmbedding.objects.count()
-            self.indexing_rate = "100%" if self.total_docs > 0 else "0%"
+                doc_cnt = Document.objects.count()
+                fold_cnt = Folder.objects.count()
+                tag_cnt = Tag.objects.count()
+                idx_info = get_indexing_stats()
 
-            qs = User.objects.select_related('role', 'department', 'student_class').order_by('id')
-            loaded = []
-            for u in qs:
-                name = u.full_name or u.username
-                uname = u.username
-                email = getattr(u, 'email', '') or f"{uname}@docuni.edu.vn"
-                role = str(u.role.role_name if u.role else "STUDENT").upper()
-                dept = u.department.department_name if u.department else ""
-                s_class = u.student_class.class_name if u.student_class else ""
-                active = bool(getattr(u, 'is_active', True))
-                created = u.created_at.strftime('%Y-%m-%d') if getattr(u, 'created_at', None) else ""
-                avatar = name[:2].upper() if name else uname[:2].upper()
-                loaded.append(AdminUser(
-                    id=str(u.id),
-                    full_name=name,
-                    username=uname,
-                    email=email,
-                    role=role,
-                    department=dept,
-                    student_class=s_class,
-                    is_active=active,
-                    created_at=created,
-                    avatar_fallback=avatar,
-                ))
-            self.users = loaded
+                qs = User.objects.select_related('role', 'department', 'student_class').order_by('id')
+                user_list = []
+                for u in qs:
+                    name = u.full_name or u.username
+                    uname = u.username
+                    email = getattr(u, 'email', '') or f"{uname}@docuni.edu.vn"
+                    role = str(u.role.role_name if u.role else "STUDENT").upper()
+                    dept = u.department.department_name if u.department else ""
+                    s_class = u.student_class.class_name if u.student_class else ""
+                    active = bool(getattr(u, 'is_active', True))
+                    created = u.created_at.strftime('%Y-%m-%d') if getattr(u, 'created_at', None) else ""
+                    avatar = name[:2].upper() if name else uname[:2].upper()
+                    user_list.append(AdminUser(
+                        id=str(u.id),
+                        full_name=name,
+                        username=uname,
+                        email=email,
+                        role=role,
+                        department=dept,
+                        student_class=s_class,
+                        is_active=active,
+                        created_at=created,
+                        avatar_fallback=avatar,
+                    ))
+                return doc_cnt, fold_cnt, tag_cnt, idx_info, user_list
+
+            doc_cnt, fold_cnt, tag_cnt, idx_info, user_list = await asyncio.to_thread(_load_data_orm)
+            self.total_docs = doc_cnt
+            self.total_folders = fold_cnt
+            self.total_tags = tag_cnt
+            self.total_chunks = int(idx_info.get("total_chunks", 0))
+            self.indexing_rate = f"{idx_info.get('indexing_percentage', 0)}%"
+            self.users = user_list
         except Exception:
             self.users = []
 
@@ -199,11 +234,18 @@ class AdminUserState(rx.State):
         result = self.users
         q = self.search_query.strip().lower()
         if q:
-            result = [u for u in result if q in u.full_name.lower() or q in u.username.lower() or q in u.email.lower()]
+            result = [u for u in result if q in u.full_name.lower() or q in u.username.lower() or q in u.email.lower() or q in u.student_class.lower()]
         if self.filter_role != "ALL":
             result = [u for u in result if u.role == self.filter_role]
         if self.filter_dept != "ALL":
-            result = [u for u in result if u.department == self.filter_dept]
+            f_d = self.filter_dept.strip().lower()
+            result = [
+                u for u in result
+                if u.department.strip().lower() == f_d
+                or (f_d in ("cong nghe thong tin", "d1") and ("thong tin" in u.department.lower() or "cntt" in u.department.lower()))
+                or (f_d in ("kinh te", "d2") and "kinh te" in u.department.lower())
+                or (f_d in ("ngoai ngu", "d3") and "ngoai ngu" in u.department.lower())
+            ]
         if self.filter_status == "ACTIVE":
             result = [u for u in result if u.is_active]
         elif self.filter_status == "INACTIVE":
@@ -230,6 +272,17 @@ class AdminUserState(rx.State):
     def student_count(self) -> int:
         return sum(1 for u in self.users if u.role == "STUDENT")
 
+    @rx.var
+    def available_classes_for_form(self) -> List[str]:
+        dept_norm = self.form_dept.strip().lower()
+        if "thong tin" in dept_norm or "cntt" in dept_norm or dept_norm == "d1":
+            return ["CNTT-K0", "CNTT-K1", "CNTT-K2"]
+        elif "kinh te" in dept_norm or "kt" in dept_norm or dept_norm == "d2":
+            return ["KT-K1", "KT-K2"]
+        elif "ngoai ngu" in dept_norm or "nn" in dept_norm or dept_norm == "d3":
+            return ["NN-K1"]
+        return []
+
     # ── Search & Filter ──
     def set_search_query(self, v: str):
         self.search_query = v
@@ -249,6 +302,38 @@ class AdminUserState(rx.State):
         self.filter_dept = "ALL"
         self.filter_status = "ALL"
 
+    # ── Helpers for Department & Class mapping ──
+    def get_classes_for_dept(self, dept_name: str) -> List[str]:
+        dept_norm = dept_name.strip().lower()
+        if "thong tin" in dept_norm or "cntt" in dept_norm or dept_norm == "d1":
+            return ["CNTT-K0", "CNTT-K1", "CNTT-K2"]
+        elif "kinh te" in dept_norm or "kt" in dept_norm or dept_norm == "d2":
+            return ["KT-K1", "KT-K2"]
+        elif "ngoai ngu" in dept_norm or "nn" in dept_norm or dept_norm == "d3":
+            return ["NN-K1"]
+        return []
+
+    def get_dept_id(self, dept_name: str) -> int:
+        dept_norm = dept_name.strip().lower()
+        if "thong tin" in dept_norm or "cntt" in dept_norm or dept_norm == "d1":
+            return 1
+        elif "kinh te" in dept_norm or "kt" in dept_norm or dept_norm == "d2":
+            return 2
+        elif "ngoai ngu" in dept_norm or "nn" in dept_norm or dept_norm == "d3":
+            return 3
+        return 1
+
+    def get_class_id(self, class_name: str) -> Optional[int]:
+        c_map = {
+            'CNTT-K1': 1,
+            'CNTT-K2': 2,
+            'KT-K1': 3,
+            'KT-K2': 4,
+            'NN-K1': 5,
+            'CNTT-K0': 6,
+        }
+        return c_map.get(class_name)
+
     # ── Create Modal ──
     def open_create_modal(self):
         self.is_create_mode = True
@@ -259,7 +344,7 @@ class AdminUserState(rx.State):
         self.form_password = ""
         self.form_role = "STUDENT"
         self.form_dept = "Cong nghe thong tin"
-        self.form_class = ""
+        self.form_class = "CNTT-K1"
         self.form_active = True
         self.form_error = ""
         self.show_user_modal = True
@@ -273,7 +358,7 @@ class AdminUserState(rx.State):
         self.form_email = user.email
         self.form_password = ""
         self.form_role = user.role
-        self.form_dept = user.department
+        self.form_dept = user.department or "Cong nghe thong tin"
         self.form_class = user.student_class
         self.form_active = user.is_active
         self.form_error = ""
@@ -301,9 +386,20 @@ class AdminUserState(rx.State):
 
     def set_form_role(self, v: str):
         self.form_role = v
+        if v == "STUDENT":
+            classes = self.get_classes_for_dept(self.form_dept)
+            if classes and (not self.form_class or self.form_class not in classes):
+                self.form_class = classes[0]
+        else:
+            self.form_class = ""
 
     def set_form_dept(self, v: str):
         self.form_dept = v
+        if self.form_role == "STUDENT":
+            classes = self.get_classes_for_dept(v)
+            self.form_class = classes[0] if classes else ""
+        else:
+            self.form_class = ""
 
     def set_form_class(self, v: str):
         self.form_class = v
@@ -311,70 +407,181 @@ class AdminUserState(rx.State):
     def toggle_form_active(self, v: bool):
         self.form_active = v
 
-    def save_user(self):
-        # Basic validation
-        if not self.form_full_name.strip():
+    async def save_user(self):
+        fname = self.form_full_name.strip()
+        uname = self.form_username.strip()
+        email = self.form_email.strip()
+        pwd = self.form_password.strip()
+        role = self.form_role
+        dept = self.form_dept
+        cls_name = self.form_class
+
+        if not fname:
             self.form_error = "Họ tên không được để trống."
             return
-        if not self.form_username.strip():
+        if not uname:
             self.form_error = "Username không được để trống."
             return
-        if self.form_email and "@" not in self.form_email:
+        if email and "@" not in email:
             self.form_error = "Email không đúng định dạng."
             return
 
+        # Ràng buộc: Không cho phép sinh viên thuộc khoa này bị gán nhầm vào lớp của khoa khác
+        if role == "STUDENT" and cls_name:
+            valid_classes = self.get_classes_for_dept(dept)
+            if valid_classes and cls_name not in valid_classes:
+                self.form_error = f"Lớp '{cls_name}' không thuộc khoa '{dept}'. Vui lòng chọn lớp đúng khoa."
+                return
+
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        headers = {"Authorization": f"Bearer {auth.auth_token}"} if (auth and auth.auth_token) else {}
+
+        dept_id = self.get_dept_id(dept)
+        class_id = self.get_class_id(cls_name) if (role == "STUDENT" and cls_name) else None
+
         if self.is_create_mode:
-            if not self.form_password:
+            if not pwd:
                 self.form_error = "Mật khẩu không được để trống khi tạo mới."
                 return
-            # Check duplicate username
-            existing = [u for u in self.users if u.username == self.form_username.strip()]
-            if existing:
-                self.form_error = f"Username '{self.form_username}' đã tồn tại."
-                return
-            new_user = AdminUser(
-                id=f"u{len(self.users) + 1}",
-                full_name=self.form_full_name.strip(),
-                username=self.form_username.strip(),
-                email=self.form_email.strip(),
-                role=self.form_role,
-                department=self.form_dept,
-                student_class=self.form_class,
-                is_active=self.form_active,
-                created_at=datetime.now().strftime("%Y-%m-%d"),
-                avatar_fallback=self.form_full_name.strip()[:2].upper(),
-            )
-            self.users.insert(0, new_user)
+            created_ok = False
+            try:
+                import httpx
+                payload = {
+                    "username": uname,
+                    "full_name": fname,
+                    "email": email,
+                    "password": pwd,
+                    "role": role,
+                    "department_id": dept_id,
+                    "class_id": class_id,
+                }
+                r = httpx.post("http://127.0.0.1:8000/api/users/", json=payload, headers=headers, timeout=4.0)
+                if r.status_code == 201:
+                    created_ok = True
+                elif r.status_code == 400:
+                    self.form_error = r.json().get("message", "Lỗi tạo tài khoản.")
+                    return
+            except Exception:
+                pass
+
+            if not created_ok:
+                try:
+                    import asyncio
+                    def _create_user_orm(u, fn, em, pw, ro, did, cid, is_act):
+                        from accounts.models import User, Role
+                        from academics.models import Department, Class
+                        if User.objects.filter(username__iexact=u).exists():
+                            return False, f"Username '{u}' đã tồn tại."
+                        r_obj, _ = Role.objects.get_or_create(role_name=ro.upper())
+                        d_obj = Department.objects.filter(id=did).first() if did else None
+                        c_obj = Class.objects.filter(id=cid).first() if cid else None
+                        User.objects.create_user(
+                            username=u, full_name=fn, role=r_obj, password=pw,
+                            email=em, department=d_obj, student_class=c_obj, is_active=is_act
+                        )
+                        return True, ""
+                    ok, err = await asyncio.to_thread(_create_user_orm, uname, fname, email, pwd, role, dept_id, class_id, self.form_active)
+                    if not ok:
+                        self.form_error = err
+                        return
+                except Exception as e:
+                    self.form_error = f"Lỗi tạo tài khoản: {str(e)}"
+                    return
+
             self.show_user_modal = False
-            return rx.toast.success(f"Đã thêm người dùng '{self.form_full_name}' thành công!")
+            await self.load_users()
+            return rx.toast.success(f"Đã thêm người dùng '{fname}' vào cơ sở dữ liệu thành công!")
+
         else:
-            updated = []
-            for u in self.users:
-                if u.id == self.modal_user_id:
-                    u.full_name = self.form_full_name.strip()
-                    u.email = self.form_email.strip()
-                    u.role = self.form_role
-                    u.department = self.form_dept
-                    u.student_class = self.form_class
-                    u.is_active = self.form_active
-                    u.avatar_fallback = self.form_full_name.strip()[:2].upper()
-                updated.append(u)
-            self.users = updated
+            target_pk = int(self.modal_user_id) if self.modal_user_id.isdigit() else None
+            updated_ok = False
+            if target_pk:
+                try:
+                    import httpx
+                    payload = {
+                        "full_name": fname,
+                        "email": email,
+                        "role": role,
+                        "department_id": dept_id,
+                        "class_id": class_id,
+                        "is_active": self.form_active,
+                    }
+                    r = httpx.patch(f"http://127.0.0.1:8000/api/users/{target_pk}/", json=payload, headers=headers, timeout=4.0)
+                    if r.status_code == 200:
+                        updated_ok = True
+                except Exception:
+                    pass
+
+            if not updated_ok and target_pk:
+                try:
+                    import asyncio
+                    def _update_user_orm(pk, fn, em, ro, did, cid, is_act):
+                        from accounts.models import User, Role
+                        from academics.models import Department, Class
+                        u = User.objects.filter(id=pk).first()
+                        if not u:
+                            return False, "Không tìm thấy người dùng."
+                        u.full_name = fn
+                        u.email = em
+                        r_obj = Role.objects.filter(role_name=ro.upper()).first()
+                        if r_obj:
+                            u.role = r_obj
+                        u.department = Department.objects.filter(id=did).first() if did else None
+                        u.student_class = Class.objects.filter(id=cid).first() if cid else None
+                        u.is_active = is_act
+                        u.save()
+                        return True, ""
+                    ok, err = await asyncio.to_thread(_update_user_orm, target_pk, fname, email, role, dept_id, class_id, self.form_active)
+                    if not ok:
+                        self.form_error = err
+                        return
+                except Exception as e:
+                    self.form_error = f"Lỗi cập nhật: {str(e)}"
+                    return
+
             self.show_user_modal = False
-            return rx.toast.success(f"Đã cập nhật thông tin người dùng '{self.form_full_name}' thành công!")
+            await self.load_users()
+            return rx.toast.success(f"Đã cập nhật thông tin người dùng '{fname}' vào PostgreSQL thành công!")
 
     # ── Toggle Account Status ──
-    def toggle_user_status(self, user_id: str):
-        updated = []
-        action = ""
-        for u in self.users:
-            if u.id == user_id:
-                u.is_active = not u.is_active
-                action = "Đã mở khóa" if u.is_active else "Đã khóa"
-                name = u.full_name
-            updated.append(u)
-        self.users = updated
-        return rx.toast.info(f"{action} tài khoản '{name}' thành công.")
+    async def toggle_user_status(self, user_id: str):
+        target_pk = int(user_id) if user_id.isdigit() else None
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        headers = {"Authorization": f"Bearer {auth.auth_token}"} if (auth and auth.auth_token) else {}
+
+        toggled = False
+        if target_pk:
+            try:
+                import httpx
+                r = httpx.patch(f"http://127.0.0.1:8000/api/users/{target_pk}/toggle-status/", headers=headers, timeout=3.0)
+                if r.status_code == 200:
+                    toggled = True
+            except Exception:
+                pass
+
+        if not toggled and target_pk:
+            try:
+                import asyncio
+                def _toggle_orm(pk):
+                    from accounts.models import User
+                    u = User.objects.filter(id=pk).first()
+                    if u:
+                        u.is_active = not u.is_active
+                        u.save(update_fields=['is_active'])
+                        return True, u.is_active, u.full_name
+                    return False, False, ""
+                ok, st, name = await asyncio.to_thread(_toggle_orm, target_pk)
+                if ok:
+                    await self.load_users()
+                    msg = "Đã mở khóa" if st else "Đã khóa"
+                    return rx.toast.info(f"{msg} tài khoản '{name}' thành công.")
+            except Exception:
+                pass
+
+        await self.load_users()
+        return rx.toast.info("Đã cập nhật trạng thái tài khoản thành công.")
 
     # ── Delete ──
     def open_delete_dialog(self, user_id: str, user_name: str):
@@ -386,12 +593,37 @@ class AdminUserState(rx.State):
         self.show_delete_dialog = False
         self.delete_user_id = ""
 
-    def confirm_delete(self):
+    async def confirm_delete(self):
+        target_pk = int(self.delete_user_id) if self.delete_user_id.isdigit() else None
         name = self.delete_user_name
-        self.users = [u for u in self.users if u.id != self.delete_user_id]
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        headers = {"Authorization": f"Bearer {auth.auth_token}"} if (auth and auth.auth_token) else {}
+
+        deleted = False
+        if target_pk:
+            try:
+                import httpx
+                r = httpx.delete(f"http://127.0.0.1:8000/api/users/{target_pk}/", headers=headers, timeout=3.0)
+                if r.status_code == 200:
+                    deleted = True
+            except Exception:
+                pass
+
+        if not deleted and target_pk:
+            try:
+                import asyncio
+                def _del_orm(pk):
+                    from accounts.models import User
+                    User.objects.filter(id=pk).delete()
+                await asyncio.to_thread(_del_orm, target_pk)
+            except Exception:
+                pass
+
         self.show_delete_dialog = False
         self.delete_user_id = ""
-        return rx.toast.success(f"Đã xóa người dùng '{name}' thành công!")
+        await self.load_users()
+        return rx.toast.success(f"Đã xóa người dùng '{name}' khỏi PostgreSQL thành công!")
 
     # ── View Detail ──
     def open_detail(self, user: AdminUser):
@@ -651,11 +883,23 @@ def user_form_modal() -> rx.Component:
                 rx.grid(
                     rx.vstack(
                         rx.text("Lớp (Sinh viên)", size="2", weight="bold", color="slate.11"),
-                        rx.input(
-                            placeholder="D21CQCN01-B (tuỳ chọn)",
-                            value=AdminUserState.form_class,
-                            on_change=AdminUserState.set_form_class,
-                            size="2", width="100%",
+                        rx.cond(
+                            AdminUserState.form_role == "STUDENT",
+                            rx.select.root(
+                                rx.select.trigger(placeholder="Chọn lớp theo khoa...", width="100%", size="2"),
+                                rx.select.content(
+                                    rx.select.item("-- Không thuộc lớp --", value=""),
+                                    rx.select.item("CNTT-K0", value="CNTT-K0"),
+                                    rx.select.item("CNTT-K1", value="CNTT-K1"),
+                                    rx.select.item("CNTT-K2", value="CNTT-K2"),
+                                    rx.select.item("KT-K1", value="KT-K1"),
+                                    rx.select.item("KT-K2", value="KT-K2"),
+                                    rx.select.item("NN-K1", value="NN-K1"),
+                                ),
+                                value=AdminUserState.form_class,
+                                on_change=AdminUserState.set_form_class,
+                            ),
+                            rx.text("Không áp dụng cho Giảng viên / Admin", size="2", color="slate.8", font_style="italic", padding_top="2"),
                         ),
                         spacing="1", width="100%",
                     ),

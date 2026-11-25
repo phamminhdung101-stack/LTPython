@@ -303,28 +303,55 @@ def user_detail_api(request, pk):
         if not data:
             data = request.POST
 
-        # Chỉ Admin mới được phép đổi vai trò role_id
+        # Chỉ Admin mới được phép đổi vai trò, khoa, lớp, trạng thái
         is_admin = user and getattr(user, 'is_admin', False)
-        if 'role_id' in data and is_admin:
-            target_user.role_id = data['role_id']
+        if is_admin:
+            if 'role_id' in data and data['role_id']:
+                target_user.role_id = data['role_id']
+            elif 'role' in data and data['role']:
+                r_obj = Role.objects.filter(role_name=str(data['role']).upper()).first()
+                if r_obj:
+                    target_user.role = r_obj
+            if 'department_id' in data:
+                target_user.department_id = data['department_id'] or None
+            if 'class_id' in data:
+                target_user.student_class_id = data['class_id'] or None
+            if 'is_active' in data:
+                target_user.is_active = bool(data['is_active'])
+
         if 'full_name' in data and (is_admin or (user and user.id == target_user.id)):
             target_user.full_name = data['full_name']
         if 'email' in data and (is_admin or (user and user.id == target_user.id)):
             target_user.email = data['email']
         target_user.save()
-        return _json_ok({'user_id': target_user.id, 'full_name': target_user.full_name, 'role_id': target_user.role_id})
+        return _json_ok({
+            'user_id': target_user.id,
+            'full_name': target_user.full_name,
+            'role': target_user.role_name,
+            'role_id': target_user.role_id,
+            'department_id': target_user.department_id,
+            'class_id': target_user.student_class_id,
+            'is_active': target_user.is_active,
+        }, message="Cập nhật thông tin người dùng thành công.")
 
     if request.method == "DELETE":
         if not (user and getattr(user, 'is_admin', False)):
             return _json_error("Chỉ Admin mới có quyền xóa người dùng.", 403)
-        target_user.delete()
+        user_id = target_user.id
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM users WHERE user_id = %s", [user_id])
         return _json_ok(message="Đã xóa người dùng thành công.")
 
     return _json_ok({
         'user_id': target_user.id,
         'username': target_user.username,
         'full_name': target_user.full_name,
+        'email': target_user.email,
         'role': target_user.role_name,
+        'department_name': target_user.department.department_name if target_user.department else None,
+        'class_name': target_user.student_class.class_name if target_user.student_class else None,
+        'is_active': target_user.is_active,
     })
 
 
@@ -350,7 +377,8 @@ def role_api(request):
 @require_http_methods(["PATCH", "POST"])
 def user_toggle_status_api(request, pk):
     """Khóa hoặc kích hoạt tài khoản."""
-    if not (request.user.is_authenticated and getattr(request.user, 'is_admin', False)):
+    user = _get_authenticated_user(request)
+    if not (user and getattr(user, 'is_admin', False)):
         return _json_error("Chỉ Quản trị viên mới có quyền khóa/mở khóa tài khoản.", 403)
 
     user = get_object_or_404(User, pk=pk)

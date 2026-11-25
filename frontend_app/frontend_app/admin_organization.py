@@ -134,13 +134,17 @@ class OrgState(rx.State):
     delete_item_name: str = ""
     delete_item_type: str = ""
 
-    def load_data(self):
+    async def load_data(self):
         """Tải dữ liệu Khoa, Môn học, Lớp, Thư mục, Thẻ thực tế từ PostgreSQL qua REST API hoặc ORM."""
         loaded_d = False
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        headers = {"Authorization": f"Bearer {auth.auth_token}"} if (auth and auth.auth_token) else {}
+
         try:
             import httpx
             # 1. Departments
-            r_d = httpx.get("http://127.0.0.1:8000/api/departments/", timeout=3.0)
+            r_d = httpx.get("http://127.0.0.1:8000/api/departments/", headers=headers, timeout=3.5)
             if r_d.status_code == 200:
                 raw_d = r_d.json().get("departments") or r_d.json().get("data") or []
                 self.departments = [
@@ -157,7 +161,7 @@ class OrgState(rx.State):
                 ]
                 loaded_d = True
             # 2. Subjects
-            r_s = httpx.get("http://127.0.0.1:8000/api/subjects/", timeout=3.0)
+            r_s = httpx.get("http://127.0.0.1:8000/api/subjects/", headers=headers, timeout=3.5)
             if r_s.status_code == 200:
                 raw_s = r_s.json().get("subjects") or r_s.json().get("data") or []
                 self.subjects = [
@@ -168,12 +172,12 @@ class OrgState(rx.State):
                         department_code=f"D{item.get('department_id')}",
                         department_name=item.get("department_name", ""),
                         credits=3,
-                        total_docs=4,
+                        total_docs=int(item.get("doc_count") or item.get("total_docs") or 0),
                     )
                     for item in raw_s
                 ]
             # 3. Classes
-            r_c = httpx.get("http://127.0.0.1:8000/api/classes/", timeout=3.0)
+            r_c = httpx.get("http://127.0.0.1:8000/api/classes/", headers=headers, timeout=3.5)
             if r_c.status_code == 200:
                 raw_c = r_c.json().get("classes") or r_c.json().get("data") or []
                 self.classes = [
@@ -188,7 +192,7 @@ class OrgState(rx.State):
                     for item in raw_c
                 ]
             # 4. Folders
-            r_f = httpx.get("http://127.0.0.1:8000/api/folders/", timeout=3.0)
+            r_f = httpx.get("http://127.0.0.1:8000/api/folders/", headers=headers, timeout=3.5)
             if r_f.status_code == 200:
                 raw_f = r_f.json().get("folders") or r_f.json().get("data") or []
                 self.folders = [
@@ -205,7 +209,7 @@ class OrgState(rx.State):
                     for item in raw_f
                 ]
             # 5. Tags
-            r_t = httpx.get("http://127.0.0.1:8000/api/tags/", timeout=3.0)
+            r_t = httpx.get("http://127.0.0.1:8000/api/tags/", headers=headers, timeout=3.5)
             if r_t.status_code == 200:
                 raw_t = r_t.json().get("tags") or r_t.json().get("data") or []
                 self.tags = [
@@ -223,21 +227,21 @@ class OrgState(rx.State):
         if loaded_d and (self.folders or self.tags):
             return
 
-        # Fallback ORM
+        # Fallback ORM in thread
         try:
-            import os, sys
-            backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
-            if backend_dir not in sys.path:
-                sys.path.insert(0, backend_dir)
-            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
-            import django
-            django.setup()
-            from academics.models import Department as DjDept, Subject as DjSub, Class as DjCls
-            from documents.models import Folder as DjFolder, Tag as DjTag
-            from django.db.models import Count
+            import os, sys, asyncio
+            def _load_org_orm():
+                backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+                if backend_dir not in sys.path:
+                    sys.path.insert(0, backend_dir)
+                os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+                import django
+                django.setup()
+                from academics.models import Department as DjDept, Subject as DjSub, Class as DjCls
+                from documents.models import Folder as DjFolder, Tag as DjTag
+                from django.db.models import Count
 
-            if not self.departments:
-                self.departments = [
+                d_list = [
                     Department(
                         id=str(d.id),
                         code=f"D{d.id}",
@@ -249,8 +253,7 @@ class OrgState(rx.State):
                     )
                     for d in DjDept.objects.all()
                 ]
-            if not self.subjects:
-                self.subjects = [
+                s_list = [
                     Subject(
                         id=str(s.id),
                         code=f"SUB{s.id}",
@@ -262,8 +265,7 @@ class OrgState(rx.State):
                     )
                     for s in DjSub.objects.select_related('department').all()
                 ]
-            if not self.classes:
-                self.classes = [
+                c_list = [
                     StudentClass(
                         id=str(c.id),
                         class_name=c.class_name,
@@ -274,8 +276,7 @@ class OrgState(rx.State):
                     )
                     for c in DjCls.objects.select_related('department').all()
                 ]
-            if not self.folders:
-                self.folders = [
+                f_list = [
                     FolderItem(
                         id=str(f.id),
                         name=f.folder_name,
@@ -288,8 +289,7 @@ class OrgState(rx.State):
                     )
                     for f in DjFolder.objects.select_related('subject', 'parent').annotate(doc_count=Count('documents')).all()
                 ]
-            if not self.tags:
-                self.tags = [
+                t_list = [
                     TagItem(
                         id=str(t.id),
                         name=t.tag_name,
@@ -298,6 +298,19 @@ class OrgState(rx.State):
                     )
                     for t in DjTag.objects.annotate(doc_count=Count('documents')).all()
                 ]
+                return d_list, s_list, c_list, f_list, t_list
+
+            d_list, s_list, c_list, f_list, t_list = await asyncio.to_thread(_load_org_orm)
+            if not self.departments:
+                self.departments = d_list
+            if not self.subjects:
+                self.subjects = s_list
+            if not self.classes:
+                self.classes = c_list
+            if not self.folders:
+                self.folders = f_list
+            if not self.tags:
+                self.tags = t_list
         except Exception:
             pass
 
@@ -340,7 +353,15 @@ class OrgState(rx.State):
         q = self.subject_search.strip().lower()
         result = self.subjects
         if self.subject_dept_filter != "ALL":
-            result = [s for s in result if s.department_code == self.subject_dept_filter]
+            f = self.subject_dept_filter.strip().lower()
+            result = [
+                s for s in result
+                if s.department_code.strip().lower() == f
+                or s.department_name.strip().lower() == f
+                or (f in ("cong nghe thong tin", "d1") and (s.department_code.upper() in ("D1", "D01") or "thong tin" in s.department_name.lower() or "cntt" in s.department_name.lower()))
+                or (f in ("kinh te", "d2") and (s.department_code.upper() in ("D2", "D02") or "kinh te" in s.department_name.lower()))
+                or (f in ("ngoai ngu", "d3") and (s.department_code.upper() in ("D3", "D03") or "ngoai ngu" in s.department_name.lower()))
+            ]
         if q:
             result = [s for s in result if q in s.name.lower() or q in s.code.lower()]
         return result
@@ -350,7 +371,15 @@ class OrgState(rx.State):
         q = self.class_search.strip().lower()
         result = self.classes
         if self.class_dept_filter != "ALL":
-            result = [c for c in result if c.department_code == self.class_dept_filter]
+            f = self.class_dept_filter.strip().lower()
+            result = [
+                c for c in result
+                if c.department_code.strip().lower() == f
+                or c.department_name.strip().lower() == f
+                or (f in ("cong nghe thong tin", "d1") and (c.department_code.upper() in ("D1", "D01") or "thong tin" in c.department_name.lower() or "cntt" in c.department_name.lower()))
+                or (f in ("kinh te", "d2") and (c.department_code.upper() in ("D2", "D02") or "kinh te" in c.department_name.lower()))
+                or (f in ("ngoai ngu", "d3") and (c.department_code.upper() in ("D3", "D03") or "ngoai ngu" in c.department_name.lower()))
+            ]
         if q:
             result = [c for c in result if q in c.class_name.lower()]
         return result
@@ -1426,10 +1455,10 @@ def admin_organization_page() -> rx.Component:
                         rx.select.root(
                             rx.select.trigger(placeholder="Lọc theo Khoa", size="2", width="200px"),
                             rx.select.content(
-                                rx.select.item("Tất cả Khoa", value="ALL"),
-                                rx.select.item("Cong nghe thong tin", value="Cong nghe thong tin"),
-                                rx.select.item("Kinh te", value="Kinh te"),
-                                rx.select.item("Ngoai ngu", value="Ngoai ngu"),
+                                rx.select.item("Tất cả khoa", value="ALL"),
+                                rx.select.item("Công nghệ thông tin (D1)", value="Cong nghe thong tin"),
+                                rx.select.item("Kinh tế (D2)", value="Kinh te"),
+                                rx.select.item("Ngoại ngữ (D3)", value="Ngoai ngu"),
                             ),
                             value=OrgState.subject_dept_filter,
                             on_change=OrgState.set_subject_dept_filter,
@@ -1464,10 +1493,10 @@ def admin_organization_page() -> rx.Component:
                         rx.select.root(
                             rx.select.trigger(placeholder="Lọc theo Khoa", size="2", width="200px"),
                             rx.select.content(
-                                rx.select.item("Tất cả Khoa", value="ALL"),
-                                rx.select.item("Cong nghe thong tin", value="Cong nghe thong tin"),
-                                rx.select.item("Kinh te", value="Kinh te"),
-                                rx.select.item("Ngoai ngu", value="Ngoai ngu"),
+                                rx.select.item("Tất cả khoa", value="ALL"),
+                                rx.select.item("Công nghệ thông tin (D1)", value="Cong nghe thong tin"),
+                                rx.select.item("Kinh tế (D2)", value="Kinh te"),
+                                rx.select.item("Ngoại ngữ (D3)", value="Ngoai ngu"),
                             ),
                             value=OrgState.class_dept_filter,
                             on_change=OrgState.set_class_dept_filter,

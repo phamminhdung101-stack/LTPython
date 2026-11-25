@@ -97,6 +97,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return f'{self.full_name} (@{self.username})'
 
+    def delete(self, using=None, keep_parents=False):
+        """Xóa trực tiếp từ bảng users tránh lỗi bảng M2M users_groups không tồn tại."""
+        from django.db import connection
+        u_id = self.id
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM users WHERE user_id = %s", [u_id])
+
     @property
     def user_id(self):
         return self.id

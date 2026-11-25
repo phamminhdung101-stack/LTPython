@@ -65,6 +65,25 @@ def _json_ok(data=None, message: str = 'Thành công', status: int = 200) -> Jso
     return JsonResponse(payload, status=status, json_dumps_params={'ensure_ascii': False})
 
 
+def _get_authenticated_user(request):
+    auth_header = request.headers.get('Authorization') or request.META.get('HTTP_AUTHORIZATION')
+    has_token = (auth_header and 'Bearer' in auth_header) or (hasattr(request, 'GET') and 'token' in request.GET)
+    if has_token:
+        try:
+            from accounts.authentication import JWTAuthentication
+            jwt_auth = JWTAuthentication()
+            auth_res = jwt_auth.authenticate(request)
+            if auth_res:
+                request.user = auth_res[0]
+                return auth_res[0]
+        except Exception:
+            pass
+    user = getattr(request, 'user', None)
+    if user and user.is_authenticated:
+        return user
+    return None
+
+
 # ─── PHẦN 2: UPLOAD / DOWNLOAD / XÓA FILE ────────────────────────────────────
 
 @csrf_exempt
@@ -1212,8 +1231,8 @@ def submit_approval_api(request, pk):
 def reindex_document_api(request, pk):
     """Reindex một tài liệu cụ thể (Admin / Giảng viên)."""
     doc = get_object_or_404(Document, pk=pk)
-    user = request.user
-    if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
+    user = _get_authenticated_user(request)
+    if not (user and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
         return _json_error("Chỉ Quản trị viên mới có quyền Indexing tài liệu.", 403)
 
     res = index_document(doc, user=user)
@@ -1230,8 +1249,8 @@ def indexing_status_api(request):
 @require_http_methods(["POST"])
 def indexing_run_all_api(request):
     """Chạy Indexing toàn bộ tài liệu trong hệ thống (Admin only)."""
-    user = request.user
-    if not (user.is_authenticated and getattr(user, 'is_admin', False)):
+    user = _get_authenticated_user(request)
+    if not (user and getattr(user, 'is_admin', False)):
         return _json_error("Chỉ Quản trị viên mới có quyền chạy Indexing toàn bộ hệ thống.", 403)
 
     docs = Document.objects.all()
