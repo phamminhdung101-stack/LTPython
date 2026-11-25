@@ -600,7 +600,7 @@ def student_documents_page() -> rx.Component:
                 rx.cond(
                     GlobalDocState.load_error != "",
                     rx.callout.root(
-                        rx.callout.icon(rx.icon("alert-triangle")),
+                        rx.callout.icon(rx.icon("triangle-alert")),
                         rx.hstack(
                             rx.callout.text(GlobalDocState.load_error),
                             rx.spacer(),
@@ -656,7 +656,7 @@ def student_documents_page() -> rx.Component:
                     rx.center(
                         rx.vstack(
                             rx.icon(
-                                rx.cond(GlobalDocState.load_error != "", "alert-triangle", "folder-open"),
+                                rx.cond(GlobalDocState.load_error != "", "triangle-alert", "folder-open"),
                                 size=48,
                                 color=rx.cond(GlobalDocState.load_error != "", "var(--red-9)", "var(--slate-8)"),
                             ),

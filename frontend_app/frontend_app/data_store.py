@@ -9,6 +9,30 @@ from typing import List, Dict, Any
 import reflex as rx
 
 
+def trigger_browser_download(url: str, filename: str = "") -> rx.event.EventSpec:
+    """Kích hoạt tải file từ trình duyệt, tương thích hoàn toàn với URL tuyệt đối và tránh lỗi của rx.download.
+    
+    Tránh lỗi: 'ValueError: The URL argument should start with a /'
+    Đảm bảo file nhị phân nguyên vẹn được trình duyệt tải trực tiếp từ Django FileResponse.
+    """
+    import json
+    safe_url = json.dumps(url)
+    safe_name = json.dumps(filename) if filename else '""'
+    script = (
+        f"(() => {{ "
+        f"const link = document.createElement('a'); "
+        f"link.href = {safe_url}; "
+        f"if ({safe_name}) {{ link.setAttribute('download', {safe_name}); }} "
+        f"link.style.display = 'none'; "
+        f"document.body.appendChild(link); "
+        f"link.click(); "
+        f"setTimeout(() => link.remove(), 1000); "
+        f"}})();"
+    )
+    return rx.call_script(script)
+
+
+
 # ─── 1. Danh Sách Tài Khoản Người Dùng Giả Lập Chuẩn ────────────────────────
 
 PRESET_USERS: List[Dict[str, Any]] = [
@@ -995,27 +1019,47 @@ class GlobalDocState(rx.State):
     def close_acl_denied(self):
         self.acl_denied_open = False
 
-    def download_active_doc(self):
-        """Tải tài liệu và ghi nhận audit log."""
-        if self.active_doc:
-            doc_id = self.active_doc.get("id")
-            for d in self.documents:
-                if d["id"] == doc_id:
-                    d["downloads"] = d.get("downloads", 0) + 1
-                    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    d.setdefault("activity_logs", []).insert(0, {
-                        "id": f"log_d_{datetime.now().timestamp()}",
-                        "action": "DOWNLOAD",
-                        "user_name": self.current_user.get("full_name", ""),
-                        "description": f"Tải xuống tệp {d.get('file_name')}",
-                        "timestamp": now_str,
-                    })
-                    self.active_doc = dict(d)
-                    break
-            return [
-                rx.download(url=f"/_upload/{self.active_doc.get('file_name')}"),
-                rx.toast.success(f"Đã bắt đầu tải tệp: {self.active_doc.get('file_name')}"),
-            ]
+    async def download_active_doc(self):
+        """Tải tài liệu nhị phân nguyên vẹn từ Django Backend qua API download."""
+        if not self.active_doc:
+            return rx.toast.error("Không có tài liệu nào đang được chọn.")
+
+        doc_id = self.active_doc.get("id")
+        doc_status = self.active_doc.get("status", "")
+        file_name = self.active_doc.get("file_name") or f"document_{doc_id}"
+
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        token = auth.auth_token
+        user_role = getattr(auth, 'user_role', 'STUDENT')
+
+        # Kiểm tra trạng thái: Sinh viên không được tải tài liệu chưa duyệt / bị từ chối của người khác
+        if user_role == 'STUDENT' and doc_status != 'APPROVED' and str(self.active_doc.get("uploader_id", "")) != str(auth.current_user_id):
+            return rx.toast.error("Tài liệu chưa được phê duyệt hoặc đã bị từ chối, không thể tải xuống!")
+
+        for d in self.documents:
+            if str(d.get("id")) == str(doc_id):
+                d["downloads"] = d.get("downloads", 0) + 1
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+                d.setdefault("activity_logs", []).insert(0, {
+                    "id": f"log_d_{datetime.now().timestamp()}",
+                    "action": "DOWNLOAD",
+                    "user_name": self.current_user.get("full_name", ""),
+                    "description": f"Tải xuống tệp {file_name}",
+                    "timestamp": now_str,
+                })
+                self.active_doc = dict(d)
+                break
+
+        # Tải trực tiếp file nhị phân nguyên vẹn từ Backend API
+        download_url = f"http://127.0.0.1:8000/api/documents/{doc_id}/download/?format=file"
+        if token:
+            download_url += f"&token={token}"
+
+        return [
+            trigger_browser_download(download_url, file_name),
+            rx.toast.success(f"Đang bắt đầu tải tệp: {file_name}"),
+        ]
 
     # ── XỬ LÝ QUY TRÌNH DUYỆT (TASK 3: APPROVAL WORKFLOW) ─────────────────────
 
@@ -1140,9 +1184,27 @@ class GlobalDocState(rx.State):
     def close_version_modal(self):
         self.version_modal_open = False
 
-    def download_version_file(self, file_name: str):
+    async def download_version_file(self, file_name: str):
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        token = auth.auth_token
+
+        doc_id = ""
+        if self.active_version_doc:
+            doc_id = str(self.active_version_doc.get("id", ""))
+        elif self.active_doc:
+            doc_id = str(self.active_doc.get("id", ""))
+
+        if doc_id:
+            download_url = f"http://127.0.0.1:8000/api/documents/{doc_id}/download/?format=file"
+        else:
+            download_url = f"http://127.0.0.1:8000/api/documents/1/download/?format=file"
+
+        if token and "?" in download_url:
+            download_url += f"&token={token}"
+
         return [
-            rx.download(url=f"/_upload/{file_name}"),
+            trigger_browser_download(download_url, file_name),
             rx.toast.info(f"Đang chuẩn bị tải về phiên bản: {file_name}"),
         ]
 

@@ -17,8 +17,11 @@ DEFAULT_MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 52,428,800 bytes
 ALLOWED_EXTENSIONS = {
     '.pdf': 'application/pdf',
     '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.doc': 'application/msword',
     '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.ppt': 'application/vnd.ms-powerpoint',
     '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.xls': 'application/vnd.ms-excel',
     '.zip': 'application/zip',
     '.txt': 'text/plain',
 }
@@ -49,6 +52,8 @@ def check_magic_bytes(file_obj, ext: str) -> bool:
             return header.startswith(b'%PDF-')
         elif ext in ('.docx', '.pptx', '.xlsx', '.zip'):
             return header.startswith(b'PK')
+        elif ext in ('.doc', '.ppt', '.xls'):
+            return header.startswith(b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1')
         elif ext == '.txt':
             return b'\x00' not in header
         return True

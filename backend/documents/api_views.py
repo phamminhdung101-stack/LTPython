@@ -16,7 +16,10 @@ Phần 3:
 """
 
 import os
+import re
 import json
+from pathlib import Path
+from django.conf import settings
 from django.http import JsonResponse, HttpResponse, FileResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
@@ -235,6 +238,19 @@ def upload_document_api(request):
     return _json_ok(data, message="Tải lên tài liệu thành công.", status=201)
 
 
+EXTENSION_MIME_MAP = {
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.pdf': 'application/pdf',
+    '.doc': 'application/msword',
+    '.ppt': 'application/vnd.ms-powerpoint',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.xls': 'application/vnd.ms-excel',
+    '.zip': 'application/zip',
+    '.txt': 'text/plain; charset=utf-8',
+}
+
+
 @require_http_methods(["GET"])
 def download_document_api(request, pk):
     """
@@ -243,9 +259,10 @@ def download_document_api(request, pk):
     - Sinh Presigned URL Cloudflare R2 có hạn dùng (3600s)
     - Tăng số lượt tải (download_count)
     - Ghi nhận nhật ký DOWNLOAD
+    - Trả về dữ liệu nhị phân nguyên vẹn (FileResponse) khi tải file
     """
     doc = get_object_or_404(Document, pk=pk)
-    user = request.user
+    user = _get_authenticated_user(request) or request.user
 
     # 1. Kiểm tra quyền tải theo ACL
     can_download, reason = can_user_download_document(user, doc)
@@ -270,11 +287,16 @@ def download_document_api(request, pk):
     except (SuspiciousFileOperation, ValueError):
         return _json_error("Phát hiện đường dẫn không an toàn (Path Traversal).", 400)
 
+    if not (abs_path and abs_path.exists() and abs_path.is_file()):
+        direct = (Path(settings.MEDIA_ROOT) / clean_key.lstrip('/')).resolve()
+        if direct.exists() and direct.is_file():
+            abs_path = direct
+
     # 3. Tăng lượt tải & ghi log
     Document.objects.filter(pk=pk).update(download_count=doc.download_count + 1)
     DocumentActivityLog.objects.create(
         document=doc,
-        user=user if user.is_authenticated else None,
+        user=user if (user and user.is_authenticated) else None,
         action='DOWNLOAD',
         description=f"Tải xuống phiên bản v{latest.version_number}.0 (Khóa: {latest.object_key})",
     )
@@ -296,18 +318,37 @@ def download_document_api(request, pk):
         'expires_in': 3600,
     }
 
-    # Nếu có HTTP_AUTHORIZATION (như bài test lưu trữ file cục bộ) và file tồn tại trên ổ đĩa -> FileResponse
+    # Xác định yêu cầu trả file binary hay JSON metadata
     auth_hdr = request.headers.get('Authorization') or request.META.get('HTTP_AUTHORIZATION')
-    wants_file = bool(auth_hdr) and request.GET.get('format') != 'json'
-    if wants_file and abs_path and abs_path.exists() and abs_path.is_file():
-        filename = getattr(doc, 'original_file_name', None) or getattr(doc, 'file_name', None) or abs_path.name
-        mime_type = getattr(doc, 'mime_type', None) or 'application/octet-stream'
-        return FileResponse(
+    format_param = request.GET.get('format', '').lower()
+    has_token = 'token' in request.GET
+
+    # Điều kiện trả file binary nguyên vẹn:
+    # 1. Có format=file HOẶC
+    # 2. Có token trong query param (?token=...) HOẶC
+    # 3. Có header Authorization và không yêu cầu format=json
+    wants_file = (format_param == 'file') or has_token or (bool(auth_hdr) and format_param != 'json')
+
+    if wants_file:
+        if not (abs_path and abs_path.exists() and abs_path.is_file()):
+            return _json_error("Tệp tin không tồn tại trên hệ thống lưu trữ.", 404)
+
+        ext = abs_path.suffix.lower()
+        mime_type = EXTENSION_MIME_MAP.get(ext, 'application/octet-stream')
+        raw_name = abs_path.name
+        clean_name = re.sub(r'^v\d+_', '', raw_name)
+        filename = getattr(doc, 'original_file_name', None) or getattr(doc, 'file_name', None) or clean_name or raw_name
+        if not filename.lower().endswith(ext):
+            filename = f"{filename}{ext}"
+
+        response = FileResponse(
             open(abs_path, 'rb'),
             content_type=mime_type,
             as_attachment=True,
             filename=filename,
         )
+        response['Content-Length'] = abs_path.stat().st_size
+        return response
 
     return _json_ok(json_data)
 
@@ -695,16 +736,35 @@ def document_detail_api(request, pk):
 def approve_document_api(request, pk):
     """
     API Phê duyệt tài liệu (Giảng viên / Admin):
+    - Kiểm tra tệp gốc có tồn tại nguyên vẹn tại nơi lưu trữ hay không
     - Đổi status -> APPROVED
     - Đặt is_public = True
     - Ghi nhận approved_by và approved_at
     - Ghi nhật ký kiểm toán APPROVE
     """
     doc = get_object_or_404(Document, pk=pk)
-    user = request.user
+    user = _get_authenticated_user(request) or request.user
 
-    if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
+    if not (user and user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
         return _json_error("Chỉ có Giảng viên hoặc Quản trị viên mới có quyền phê duyệt tài liệu.", 403)
+
+    # 1. Kiểm tra tính toàn vẹn của tệp nếu tài liệu có phiên bản tệp đính kèm
+    latest = doc.latest_version
+    if latest and latest.file:
+        from .storage_service import LocalDocumentStorageService
+        storage_svc = LocalDocumentStorageService()
+        try:
+            abs_path = storage_svc.get_absolute_path(latest.file)
+        except Exception:
+            abs_path = None
+
+        if not (abs_path and abs_path.exists() and abs_path.is_file()):
+            direct = (Path(settings.MEDIA_ROOT) / latest.file.lstrip('/')).resolve()
+            if direct.exists() and direct.is_file():
+                abs_path = direct
+
+        if not abs_path or not abs_path.exists() or not abs_path.is_file():
+            return _json_error(f"Tệp gốc của tài liệu không tồn tại tại vị trí lưu trữ ({latest.file}).", 400)
 
     from .services import approve_document
     doc = approve_document(doc, user)
@@ -729,9 +789,9 @@ def reject_document_api(request, pk):
     - Ghi nhật ký kiểm toán REJECT
     """
     doc = get_object_or_404(Document, pk=pk)
-    user = request.user
+    user = _get_authenticated_user(request) or request.user
 
-    if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
+    if not (user and user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
         return _json_error("Chỉ có Giảng viên hoặc Quản trị viên mới có quyền từ chối duyệt.", 403)
 
     reason = request.POST.get('reason', '').strip()
@@ -1175,19 +1235,60 @@ def version_download_api(request, pk, ver_id):
     """Tải xuống file của một phiên bản cụ thể."""
     doc = get_object_or_404(Document, pk=pk)
     version = get_object_or_404(DocumentVersion, pk=ver_id, document=doc)
-    user = request.user
+    user = _get_authenticated_user(request) or request.user
 
     can_download, reason = can_user_download_document(user, doc)
     if not can_download:
         return _json_error(reason, 403)
 
+    raw_key = (version.object_key or '').strip()
+    clean_key = raw_key.replace('\\', '/')
+    if '..' in clean_key:
+        return _json_error("Phát hiện đường dẫn không an toàn (Path Traversal).", 400)
+
+    from .storage_service import LocalDocumentStorageService
+    storage_svc = LocalDocumentStorageService()
+    try:
+        abs_path = storage_svc.get_absolute_path(clean_key)
+    except Exception:
+        abs_path = None
+
+    if not (abs_path and abs_path.exists() and abs_path.is_file()):
+        direct = (Path(settings.MEDIA_ROOT) / clean_key.lstrip('/')).resolve()
+        if direct.exists() and direct.is_file():
+            abs_path = direct
+
     DocumentActivityLog.objects.create(
         document=doc,
-        user=user if user.is_authenticated else None,
+        user=user if (user and user.is_authenticated) else None,
         action='DOWNLOAD',
         description=f"Tải xuống phiên bản lịch sử v{version.version_number}.0 (Object: {version.object_key})",
     )
     download_url = version.get_download_url(expires_in=3600)
+
+    auth_hdr = request.headers.get('Authorization') or request.META.get('HTTP_AUTHORIZATION')
+    format_param = request.GET.get('format', '').lower()
+    has_token = 'token' in request.GET
+    wants_file = (format_param == 'file') or has_token or (bool(auth_hdr) and format_param != 'json')
+
+    if wants_file:
+        if not (abs_path and abs_path.exists() and abs_path.is_file()):
+            return _json_error("Tệp tin không tồn tại trên hệ thống lưu trữ.", 404)
+
+        ext = abs_path.suffix.lower()
+        mime_type = EXTENSION_MIME_MAP.get(ext, 'application/octet-stream')
+        raw_name = abs_path.name
+        clean_name = re.sub(r'^v\d+_', '', raw_name)
+        filename = f"{clean_name}"
+        response = FileResponse(
+            open(abs_path, 'rb'),
+            content_type=mime_type,
+            as_attachment=True,
+            filename=filename,
+        )
+        response['Content-Length'] = abs_path.stat().st_size
+        return response
+
     return _json_ok({
         'document_id': doc.id,
         'version_id': version.id,

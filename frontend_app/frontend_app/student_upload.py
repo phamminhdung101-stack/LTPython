@@ -353,8 +353,25 @@ class UploadState(rx.State):
         try:
             import httpx
             headers = {"Authorization": f"Bearer {token}"} if token else {}
+            mime = "application/octet-stream"
+            f_lower = fname.lower()
+            if f_lower.endswith(".pdf"):
+                mime = "application/pdf"
+            elif f_lower.endswith(".pptx"):
+                mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            elif f_lower.endswith(".docx"):
+                mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            elif f_lower.endswith(".ppt"):
+                mime = "application/vnd.ms-powerpoint"
+            elif f_lower.endswith(".doc"):
+                mime = "application/msword"
+            elif f_lower.endswith(".xlsx"):
+                mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            elif f_lower.endswith(".txt"):
+                mime = "text/plain"
+
             files_payload = {
-                "file": (fname, file_bytes, "application/pdf" if fname.endswith(".pdf") else "application/octet-stream")
+                "file": (fname, file_bytes, mime)
             }
             # Tìm folder_id thực tế từ database
             folder_id_val = ""

@@ -244,7 +244,6 @@ def index() -> rx.Component:
     )
 
 app = rx.App(
-    theme=rx.theme(appearance="light", accent_color="blue", radius="large", has_background=True),
     html_custom_attrs={"data-theme": "light", "translate": "no", "lang": "vi"},
     style={
         "[data-sonner-toaster]": {"display": "none !important"},

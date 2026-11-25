@@ -347,6 +347,20 @@ class LecturerApprovalState(rx.State):
 
         return rx.toast.warning(f"Đã từ chối duyệt tài liệu: {reason}")
 
+    async def download_item_file(self, item_id: str, file_name: str = ""):
+        from .auth import AuthState
+        from .data_store import trigger_browser_download
+        auth = await self.get_state(AuthState)
+        token = auth.auth_token
+        fname = file_name or f"document_{item_id}"
+        dl_url = f"http://127.0.0.1:8000/api/documents/{item_id}/download/?format=file"
+        if token:
+            dl_url += f"&token={token}"
+        return [
+            trigger_browser_download(dl_url, fname),
+            rx.toast.success(f"Đang tải tệp gốc: {fname}"),
+        ]
+
 
 # ─── UI Helper Components ────────────────────────────────────────────────────
 
@@ -838,7 +852,7 @@ def lecturer_approval_page() -> rx.Component:
                                 color_scheme="gray",
                                 size="2",
                                 variant="surface",
-                                on_click=rx.download(url=f"/_upload/{active.file_name}"),
+                                on_click=LecturerApprovalState.download_item_file(active.id, active.file_name),
                             ),
                             align="center",
                             width="100%",
