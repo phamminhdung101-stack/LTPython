@@ -109,6 +109,11 @@ class AuthState(rx.State):
     def toggle_login_password(self):
         self.show_login_password = not self.show_login_password
 
+    def fill_demo_account(self, username: str, password: str = "password123"):
+        self.login_username = username
+        self.login_password = password
+        self.login_error = ""
+
     def login(self):
         uname = self.login_username.strip()
         pwd = self.login_password
@@ -302,137 +307,340 @@ def error_callout(message: str) -> rx.Component:
     )
 
 
-# ─── Trang Đăng Nhập ─────────────────────────────────────────────────────────
+# ─── Trang Đăng Nhập (Modern Dual-Column Educational Platform) ──────────────
 
 def login_page() -> rx.Component:
-    return rx.center(
-        rx.script("localStorage.clear();"),
-        rx.card(
-            rx.vstack(
-                # Logo
-                rx.center(
-                    rx.vstack(
-                        rx.box(
-                            rx.icon("graduation-cap", size=32, color="white"),
-                            bg="blue.9",
-                            padding="3",
-                            border_radius="xl",
-                            box_shadow="md",
-                        ),
-                        rx.vstack(
-                            rx.heading("DocUni", size="7", weight="bold", color="slate.12"),
-                            rx.text("Cổng Học Liệu Thông Minh", size="2", color="blue.10", weight="bold"),
-                            spacing="0",
-                            align="center",
-                        ),
-                        spacing="3",
-                        align="center",
-                    ),
-                    width="100%",
-                    padding_y="4",
+    def feature_box(icon: str, title: str, desc: str, icon_color: str = "#60a5fa") -> rx.Component:
+        return rx.box(
+            rx.hstack(
+                rx.box(
+                    rx.icon(icon, size=22, color=icon_color),
+                    background="rgba(255, 255, 255, 0.12)",
+                    padding="2.5",
+                    border_radius="xl",
+                    display="flex",
+                    align_items="center",
+                    justify_content="center",
                 ),
-
-                rx.divider(color_scheme="gray"),
-
                 rx.vstack(
-                    rx.heading("Đăng nhập", size="5", weight="bold", color="slate.12"),
-                    rx.text("Nhập thông tin tài khoản của bạn để truy cập hệ thống", size="2", color="slate.9"),
+                    rx.text(title, size="2", weight="bold", color="white"),
+                    rx.text(desc, size="1", color="rgba(255, 255, 255, 0.75)", line_height="1.4"),
                     spacing="1",
-                    align="center",
-                    width="100%",
+                    align="start",
                 ),
+                spacing="3",
+                align="center",
+            ),
+            padding="3.5",
+            border_radius="xl",
+            background="rgba(255, 255, 255, 0.07)",
+            border="1px solid rgba(255, 255, 255, 0.12)",
+            backdrop_filter="blur(10px)",
+            width="100%",
+            transition="all 0.2s ease",
+            _hover={"background": "rgba(255, 255, 255, 0.12)", "transform": "translateX(4px)"},
+        )
 
-                # Error message
-                rx.cond(
-                    AuthState.login_error != "",
-                    error_callout(AuthState.login_error),
-                    rx.fragment(),
+    # Cột bên trái: Panel giới thiệu giáo dục công nghệ rực rỡ
+    left_showcase = rx.box(
+        rx.vstack(
+            # Brand Header
+            rx.hstack(
+                rx.box(
+                    rx.icon("graduation-cap", size=28, color="white"),
+                    background="linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)",
+                    padding="3",
+                    border_radius="xl",
+                    box_shadow="0 4px 16px rgba(139, 92, 246, 0.4)",
                 ),
+                rx.vstack(
+                    rx.heading("DocUni", size="6", weight="bold", color="white", letter_spacing="-0.02em"),
+                    rx.text("Kho Học Liệu Số & Trợ Lý AI Học Viện", size="1", color="#93c5fd", weight="bold", letter_spacing="0.05em"),
+                    spacing="0",
+                ),
+                align="center",
+                spacing="3",
+            ),
 
-                # Demo accounts info
-                rx.callout.root(
-                    rx.callout.icon(rx.icon("info", size=14)),
-                    rx.callout.text(
-                        rx.vstack(
-                            rx.text("Tài khoản trong Database PostgreSQL:", size="1", weight="bold"),
-                            rx.text("• Quản trị viên: admin / admin123 (hoặc 123456)", size="1"),
-                            rx.text("• Giảng viên: gv01 / gv123 (hoặc password123, 123456)", size="1"),
-                            rx.text("• Sinh viên: sv01, sv07... / sv123 (hoặc password123, 123456)", size="1"),
-                            spacing="0",
-                        )
-                    ),
-                    color="blue",
+            rx.spacer(),
+
+            # Headline & Description
+            rx.vstack(
+                rx.badge(
+                    rx.hstack(rx.icon("sparkles", size=13), rx.text("Nền Tảng Quản Trị Tri Thức 4.0", size="1", weight="bold"), align="center", spacing="1"),
+                    color_scheme="purple",
                     variant="surface",
-                    size="1",
-                    width="100%",
+                    radius="full",
+                    padding_x="3",
+                    padding_y="1",
                 ),
-
-                # Form fields & Login button wrapped in form for Enter key support
-                rx.form(
-                    rx.vstack(
-                        rx.vstack(
-                            rx.text("Tên đăng nhập", size="2", weight="bold", color="slate.11"),
-                            auth_input(
-                                "Nhập username...",
-                                AuthState.login_username,
-                                AuthState.set_login_username,
-                                icon="user",
-                            ),
-                            spacing="1",
-                            width="100%",
-                        ),
-                        rx.vstack(
-                            rx.text("Mật khẩu", size="2", weight="bold", color="slate.11"),
-                            rx.input(
-                                rx.input.slot(rx.icon("lock", size=16, color="var(--slate-8)")),
-                                placeholder="Nhập mật khẩu...",
-                                value=AuthState.login_password,
-                                on_change=AuthState.set_login_password,
-                                type="password",
-                                size="3",
-                                width="100%",
-                            ),
-                            spacing="1",
-                            width="100%",
-                        ),
-                        rx.button(
-                            rx.icon("log-in", size=16),
-                            "Đăng nhập",
-                            size="3",
-                            width="100%",
-                            color_scheme="blue",
-                            variant="solid",
-                            loading=AuthState.login_loading,
-                            type="submit",
-                        ),
-                        spacing="3",
-                        width="100%",
-                    ),
-                    on_submit=AuthState.login,
-                    width="100%",
+                rx.heading(
+                    "Khám phá tri thức số, kết nối tương lai cùng AI",
+                    size="8",
+                    weight="bold",
+                    color="white",
+                    line_height="1.2",
+                    letter_spacing="-0.03em",
                 ),
-
-                # Link register
-                rx.hstack(
-                    rx.text("Chưa có tài khoản?", size="2", color="slate.9"),
-                    rx.link("Đăng ký ngay", href="/register", size="2", color="blue.10", weight="bold"),
-                    justify="center",
-                    spacing="1",
-                    width="100%",
+                rx.text(
+                    "Truy cập slide bài giảng, đề thi, giáo trình chính thức và tra cứu thông minh bằng Semantic Search RAG được bảo mật tuyệt đối.",
+                    size="3",
+                    color="rgba(255, 255, 255, 0.82)",
+                    line_height="1.6",
                 ),
-
                 spacing="4",
+                align="start",
                 width="100%",
             ),
-            size="4",
-            padding="6",
-            max_width="440px",
-            width="100%",
-            box_shadow="xl",
+
+            # Feature cards
+            rx.vstack(
+                feature_box("book-open", "Kho Tài Liệu Học Phần", "Phân loại theo Khoa, Môn học, Thư mục và Lớp học.", "#60a5fa"),
+                feature_box("sparkles", "Trợ Lý AI Tra Cứu (RAG)", "Hỏi đáp nội dung tệp ngữ cảnh và trích dẫn số trang chính xác.", "#c084fc"),
+                feature_box("shield-check", "Kiểm Duyệt Hai Chiều & ACL", "Giảng viên phê duyệt, bảo vệ bản quyền tài liệu nội bộ.", "#34d399"),
+                spacing="3",
+                width="100%",
+            ),
+
+            rx.spacer(),
+
+            # Demo Accounts Quick-Fill Panel
+            rx.box(
+                rx.vstack(
+                    rx.hstack(
+                        rx.icon("key-round", size=14, color="#93c5fd"),
+                        rx.text("Tài khoản trong Database (Nhấn để điền nhanh):", size="1", weight="bold", color="#93c5fd"),
+                        align="center",
+                        spacing="1",
+                    ),
+                    rx.hstack(
+                        rx.button(
+                            "🛡️ Admin (admin)",
+                            size="1",
+                            variant="surface",
+                            color_scheme="red",
+                            radius="full",
+                            on_click=AuthState.fill_demo_account("admin", "admin123"),
+                        ),
+                        rx.button(
+                            "🎓 Giảng viên (gv01)",
+                            size="1",
+                            variant="surface",
+                            color_scheme="purple",
+                            radius="full",
+                            on_click=AuthState.fill_demo_account("gv01", "gv123"),
+                        ),
+                        rx.button(
+                            "👤 Sinh viên (sv01)",
+                            size="1",
+                            variant="surface",
+                            color_scheme="blue",
+                            radius="full",
+                            on_click=AuthState.fill_demo_account("sv01", "sv123"),
+                        ),
+                        spacing="2",
+                        wrap="wrap",
+                    ),
+                    spacing="2",
+                    width="100%",
+                ),
+                padding="3",
+                border_radius="xl",
+                background="rgba(0, 0, 0, 0.25)",
+                border="1px solid rgba(255, 255, 255, 0.1)",
+                width="100%",
+            ),
+
+            spacing="6",
+            height="100%",
+            justify="between",
+            align="start",
+            padding="10",
         ),
-        bg="slate.1",
+        flex="1",
+        background="linear-gradient(135deg, #0f172a 0%, #1e3a8a 40%, #4338ca 75%, #6d28d9 100%)",
+        display=rx.breakpoints(initial="none", md="flex"),
+        position="relative",
+        overflow="hidden",
+    )
+
+    # Cột bên phải: Form đăng nhập tinh gọn hiện đại
+    right_form = rx.box(
+        rx.center(
+            rx.card(
+                rx.vstack(
+                    # Header form
+                    rx.vstack(
+                        rx.hstack(
+                            rx.box(
+                                rx.icon("lock", size=22, color="white"),
+                                background="linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)",
+                                padding="2.5",
+                                border_radius="xl",
+                                box_shadow="0 4px 12px rgba(37, 99, 235, 0.3)",
+                            ),
+                            rx.vstack(
+                                rx.heading("Đăng nhập DocUni", size="6", weight="bold", color="slate.12", letter_spacing="-0.02em"),
+                                rx.text("Nhập thông tin tài khoản để truy cập hệ thống", size="2", color="slate.9"),
+                                spacing="0",
+                            ),
+                            align="center",
+                            spacing="3",
+                        ),
+                        spacing="1",
+                        align="start",
+                        width="100%",
+                    ),
+
+                    rx.divider(color_scheme="gray"),
+
+                    # Error message
+                    rx.cond(
+                        AuthState.login_error != "",
+                        error_callout(AuthState.login_error),
+                        rx.fragment(),
+                    ),
+
+                    # Form đăng nhập
+                    rx.form(
+                        rx.vstack(
+                            rx.vstack(
+                                rx.text("Tên đăng nhập", size="2", weight="bold", color="slate.11"),
+                                rx.input(
+                                    rx.input.slot(rx.icon("user", size=16, color="var(--slate-8)")),
+                                    placeholder="Nhập username (VD: sv01, gv01, admin)...",
+                                    value=AuthState.login_username,
+                                    on_change=AuthState.set_login_username,
+                                    size="3",
+                                    width="100%",
+                                    border_radius="lg",
+                                ),
+                                spacing="2",
+                                width="100%",
+                            ),
+
+                            rx.vstack(
+                                rx.hstack(
+                                    rx.text("Mật khẩu", size="2", weight="bold", color="slate.11"),
+                                    rx.spacer(),
+                                    rx.text(
+                                        rx.cond(AuthState.show_login_password, "Ẩn", "Hiện"),
+                                        size="1",
+                                        color="blue.10",
+                                        weight="bold",
+                                        cursor="pointer",
+                                        on_click=AuthState.toggle_login_password,
+                                    ),
+                                    align="center",
+                                    width="100%",
+                                ),
+                                rx.input(
+                                    rx.input.slot(rx.icon("lock", size=16, color="var(--slate-8)")),
+                                    rx.input.slot(
+                                        rx.icon_button(
+                                            rx.cond(AuthState.show_login_password, rx.icon("eye-off", size=15), rx.icon("eye", size=15)),
+                                            size="1",
+                                            variant="ghost",
+                                            color_scheme="gray",
+                                            on_click=AuthState.toggle_login_password,
+                                            type="button",
+                                        )
+                                    ),
+                                    placeholder="Nhập mật khẩu...",
+                                    value=AuthState.login_password,
+                                    on_change=AuthState.set_login_password,
+                                    type=rx.cond(AuthState.show_login_password, "text", "password"),
+                                    size="3",
+                                    width="100%",
+                                    border_radius="lg",
+                                ),
+                                spacing="2",
+                                width="100%",
+                            ),
+
+                            # Nút đăng nhập nổi bật với gradient
+                            rx.button(
+                                rx.hstack(
+                                    rx.icon("log-in", size=17),
+                                    rx.text("Đăng Nhập Vào Hệ Thống", size="2", weight="bold"),
+                                    align="center",
+                                    spacing="2",
+                                ),
+                                size="3",
+                                width="100%",
+                                background="linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)",
+                                color="white",
+                                border_radius="xl",
+                                box_shadow="0 4px 14px rgba(37, 99, 235, 0.35)",
+                                _hover={
+                                    "background": "linear-gradient(135deg, #1d4ed8 0%, #4338ca 100%)",
+                                    "transform": "translateY(-1px)",
+                                    "box_shadow": "0 6px 18px rgba(37, 99, 235, 0.45)",
+                                },
+                                transition="all 0.2s ease",
+                                loading=AuthState.login_loading,
+                                type="submit",
+                                margin_top="2",
+                            ),
+
+                            spacing="4",
+                            width="100%",
+                        ),
+                        on_submit=AuthState.login,
+                        width="100%",
+                    ),
+
+                    # Chuyển đổi sang đăng ký
+                    rx.hstack(
+                        rx.text("Bạn là học viên mới?", size="2", color="slate.9"),
+                        rx.link(
+                            rx.hstack(
+                                rx.text("Đăng ký tài khoản", size="2", color="blue.10", weight="bold"),
+                                rx.icon("arrow-right", size=13, color="var(--blue-10)"),
+                                align="center",
+                                spacing="1",
+                            ),
+                            href="/register",
+                        ),
+                        justify="center",
+                        spacing="2",
+                        width="100%",
+                        padding_top="2",
+                    ),
+
+                    spacing="5",
+                    width="100%",
+                ),
+                padding="7",
+                border_radius="2xl",
+                box_shadow="0 20px 40px -15px rgba(0, 0, 0, 0.08), 0 0 1px 1px rgba(0, 0, 0, 0.05)",
+                background="white",
+                border="1px solid rgba(226, 232, 240, 0.8)",
+                width=rx.breakpoints(initial="100%", sm="440px", md="460px"),
+            ),
+            width="100%",
+            height="100%",
+            padding="6",
+        ),
+        flex="1",
+        background="linear-gradient(180deg, #f8fafc 0%, #eef2ff 50%, #f1f5f9 100%)",
         min_height="100vh",
-        padding="4",
+        display="flex",
+        align_items="center",
+        justify_content="center",
+    )
+
+    return rx.box(
+        rx.script("localStorage.clear();"),
+        rx.flex(
+            left_showcase,
+            right_form,
+            direction=rx.breakpoints(initial="column", md="row"),
+            width="100%",
+            min_height="100vh",
+        ),
+        width="100%",
+        min_height="100vh",
     )
 
 

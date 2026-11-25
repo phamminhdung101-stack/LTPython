@@ -290,7 +290,13 @@ def tab_btn(label: str, tab_value: str, count, color: str = "gray") -> rx.Compon
     return rx.button(
         rx.hstack(
             rx.text(label, size="2", weight="medium"),
-            rx.badge(count.to_string(), color_scheme=color, variant=rx.cond(ContributionState.active_tab == tab_value, "solid", "surface"), size="1"),
+            rx.badge(
+                count.to_string(),
+                color_scheme=color,
+                variant=rx.cond(ContributionState.active_tab == tab_value, "solid", "surface"),
+                size="1",
+                border_radius="full",
+            ),
             align="center",
             spacing="2",
         ),
@@ -299,31 +305,38 @@ def tab_btn(label: str, tab_value: str, count, color: str = "gray") -> rx.Compon
         on_click=ContributionState.set_active_tab(tab_value),
         radius="full",
         size="2",
+        padding_x="3.5",
+        box_shadow=rx.cond(ContributionState.active_tab == tab_value, "0 2px 8px rgba(0, 0, 0, 0.12)", "none"),
     )
 
 
 def contribution_row(doc: dict) -> rx.Component:
-    return rx.card(
+    return rx.box(
         rx.vstack(
             # Header row: title + status
             rx.hstack(
                 rx.hstack(
-                    rx.icon("file-text", size=16, color="var(--slate-9)"),
+                    rx.box(
+                        rx.icon("file-text", size=18, color="#2563eb"),
+                        background="rgba(37, 99, 235, 0.1)",
+                        padding="2",
+                        border_radius="lg",
+                    ),
                     rx.vstack(
-                        rx.text(doc["title"], size="2", weight="bold", color="slate.12", max_width="460px", overflow="hidden", text_overflow="ellipsis", white_space="nowrap"),
+                        rx.text(doc["title"], size="3", weight="bold", color="slate.12", max_width="480px", overflow="hidden", text_overflow="ellipsis", white_space="nowrap"),
                         rx.hstack(
-                            rx.text(doc["subject_code"], size="1", color="slate.9", weight="medium"),
+                            rx.badge(doc["subject_code"], color_scheme="blue", variant="surface", size="1", border_radius="md"),
                             rx.text("•", size="1", color="slate.6"),
-                            rx.text(doc["folder"], size="1", color="slate.8"),
+                            rx.text(doc["folder"], size="1", color="slate.8", weight="medium"),
                             rx.text("•", size="1", color="slate.6"),
-                            rx.text(f"v{doc['version']}", size="1", color="indigo.10", weight="bold"),
+                            rx.badge(f"v{doc['version']}", color_scheme="indigo", variant="surface", size="1", border_radius="full"),
                             align="center",
-                            spacing="1",
+                            spacing="2",
                         ),
                         spacing="1",
                     ),
                     align="start",
-                    spacing="2",
+                    spacing="3",
                 ),
                 rx.spacer(),
                 rx.hstack(
@@ -338,18 +351,31 @@ def contribution_row(doc: dict) -> rx.Component:
             # REJECTED: show reason banner
             rx.cond(
                 doc["status"] == "REJECTED",
-                rx.callout.root(
-                    rx.callout.icon(rx.icon("message-square-warning", size=15)),
-                    rx.callout.text(
+                rx.box(
+                    rx.hstack(
+                        rx.icon("triangle-alert", size=18, color="#e11d48"),
                         rx.vstack(
-                            rx.text("Lý do từ chối:", size="1", weight="bold"),
-                            rx.text(doc["reject_reason"], size="1"),
+                            rx.text("Lý do từ chối từ Giảng viên:", size="2", weight="bold", color="#9f1239"),
+                            rx.text(doc["reject_reason"], size="2", color="#be123c"),
                             spacing="1",
-                        )
+                        ),
+                        rx.spacer(),
+                        rx.button(
+                            rx.icon("refresh-cw", size=13),
+                            "Nộp lại bản v2.0",
+                            size="1",
+                            color_scheme="red",
+                            variant="solid",
+                            border_radius="md",
+                            on_click=ContributionState.open_version_dialog(doc["id"]),
+                        ),
+                        align="center",
+                        width="100%",
                     ),
-                    color="red",
-                    variant="surface",
-                    size="1",
+                    background="rgba(255, 241, 242, 0.9)",
+                    border="1px solid rgba(254, 205, 211, 0.9)",
+                    border_radius="xl",
+                    padding="3",
                     width="100%",
                 ),
                 rx.fragment(),
@@ -360,23 +386,23 @@ def contribution_row(doc: dict) -> rx.Component:
                 doc["status"] == "APPROVED",
                 rx.hstack(
                     rx.hstack(
-                        rx.icon("eye", size=13, color="var(--blue-9)"),
-                        rx.text(str(doc["view_count"]), size="1", color="slate.10"),
+                        rx.icon("eye", size=13, color="#2563eb"),
+                        rx.text(str(doc["view_count"]), size="1", color="slate.11", weight="bold"),
                         rx.text("lượt xem", size="1", color="slate.8"),
                         align="center",
                         spacing="1",
                     ),
                     rx.hstack(
-                        rx.icon("download", size=13, color="var(--green-9)"),
-                        rx.text(str(doc["download_count"]), size="1", color="slate.10"),
+                        rx.icon("download", size=13, color="#16a34a"),
+                        rx.text(str(doc["download_count"]), size="1", color="slate.11", weight="bold"),
                         rx.text("lượt tải", size="1", color="slate.8"),
                         align="center",
                         spacing="1",
                     ),
                     rx.hstack(
-                        rx.icon("user", size=13, color="var(--slate-8)"),
-                        rx.text("Duyệt bởi:", size="1", color="slate.8"),
-                        rx.text(doc["reviewer"], size="1", color="indigo.10", weight="medium"),
+                        rx.icon("shield-check", size=13, color="#4f46e5"),
+                        rx.text("Phê duyệt bởi:", size="1", color="slate.8"),
+                        rx.text(doc["reviewer"], size="1", color="indigo.11", weight="bold"),
                         align="center",
                         spacing="1",
                     ),
@@ -395,7 +421,7 @@ def contribution_row(doc: dict) -> rx.Component:
                         doc["reviewed_at"] != "",
                         rx.hstack(
                             rx.text("•", size="1", color="slate.6"),
-                            rx.icon("circle-check", size=13, color="var(--green-8)"),
+                            rx.icon("circle-check", size=13, color="#16a34a"),
                             rx.text(f"Duyệt: {doc['reviewed_at']}", size="1", color="slate.8"),
                             align="center",
                             spacing="1",
@@ -413,8 +439,9 @@ def contribution_row(doc: dict) -> rx.Component:
                         rx.icon("eye", size=14),
                         "Chi tiết",
                         size="1",
-                        variant="ghost",
+                        variant="soft",
                         color_scheme="gray",
+                        border_radius="lg",
                         on_click=ContributionState.open_detail(doc["id"]),
                     ),
                     # Nộp v2.0 for REJECTED
@@ -424,8 +451,9 @@ def contribution_row(doc: dict) -> rx.Component:
                             rx.icon("refresh-cw", size=14),
                             "Nộp phiên bản v2.0",
                             size="1",
-                            variant="surface",
+                            variant="solid",
                             color_scheme="blue",
+                            border_radius="lg",
                             on_click=ContributionState.open_version_dialog(doc["id"]),
                         ),
                         rx.fragment(),
@@ -437,8 +465,9 @@ def contribution_row(doc: dict) -> rx.Component:
                             rx.icon("trash-2", size=14),
                             "Thu hồi",
                             size="1",
-                            variant="ghost",
+                            variant="soft",
                             color_scheme="red",
+                            border_radius="lg",
                             on_click=ContributionState.open_revoke_confirm(doc["id"]),
                         ),
                         rx.fragment(),
@@ -449,11 +478,16 @@ def contribution_row(doc: dict) -> rx.Component:
                 width="100%",
             ),
 
-            spacing="3",
+            spacing="4",
             width="100%",
         ),
-        variant="surface",
-        size="2",
+        background="white",
+        border="1px solid rgba(226, 232, 240, 0.9)",
+        border_radius="2xl",
+        box_shadow="0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.02)",
+        _hover={"border_color": "rgba(203, 213, 225, 1)", "box_shadow": "0 6px 16px rgba(0, 0, 0, 0.06)", "transform": "translateY(-1px)"},
+        transition="all 0.2s ease",
+        padding="4",
         width="100%",
     )
 
@@ -705,55 +739,70 @@ def student_contributions_page() -> rx.Component:
         AuthState.is_logged_in & (AuthState.current_user_role != ""),
         student_page_wrapper(
             rx.vstack(
-            # ── Page Header ──
-            rx.hstack(
+            # ── Modern Hero Banner ──
+            rx.box(
                 rx.hstack(
                     rx.box(
-                        rx.icon("list-checks", size=28, color="white"),
-                        bg="indigo.9",
+                        rx.icon("list-checks", size=32, color="white"),
+                        background="rgba(255, 255, 255, 0.2)",
                         padding="3",
                         border_radius="xl",
+                        backdrop_filter="blur(8px)",
                     ),
                     rx.vstack(
-                        rx.heading("Tài liệu đóng góp của tôi", size="7", weight="bold", color="slate.12"),
-                        rx.text("Theo dõi trạng thái duyệt và quản lý tất cả tài liệu bạn đã đóng góp", size="3", color="slate.9"),
+                        rx.heading("Tài Liệu Đóng Góp Của Tôi", size="7", weight="bold", color="white"),
+                        rx.text(
+                            "Theo dõi tiến trình phê duyệt thực tế từ Giảng viên, lịch sử phản hồi và cập nhật phiên bản tài liệu mới.",
+                            size="3",
+                            color="rgba(255, 255, 255, 0.9)",
+                        ),
                         spacing="1",
                     ),
-                    align="center",
-                    spacing="3",
-                ),
-                rx.spacer(),
-                rx.link(
-                    rx.button(
-                        rx.icon("plus", size=16),
-                        "Đóng góp mới",
-                        color_scheme="blue",
-                        size="3",
-                        variant="solid",
+                    rx.spacer(),
+                    rx.link(
+                        rx.button(
+                            rx.icon("plus", size=16),
+                            "Đóng Góp Tài Liệu Mới",
+                            background="white",
+                            color="#0f766e",
+                            border_radius="xl",
+                            size="3",
+                            box_shadow="0 4px 14px rgba(0, 0, 0, 0.1)",
+                            _hover={"background": "rgba(255, 255, 255, 0.9)", "transform": "translateY(-1px)"},
+                        ),
+                        href="/student/upload",
                     ),
-                    href="/student/upload",
+                    align="center",
+                    width="100%",
                 ),
-                align="center",
+                background="linear-gradient(135deg, #0f766e 0%, #0d9488 50%, #14b8a6 100%)",
+                box_shadow="0 10px 25px -5px rgba(13, 148, 136, 0.35)",
+                border_radius="2xl",
+                padding="6",
                 width="100%",
+                margin_bottom="1",
             ),
-
-            rx.divider(color_scheme="gray"),
 
             # ── KPI Cards ──
             rx.grid(
-                kpi_card("Tổng đóng góp", ContributionState.total_count.to_string(), "files", "blue"),
-                kpi_card("Đang chờ duyệt", ContributionState.pending_count.to_string(), "clock", "amber", "Trong hàng đợi"),
-                kpi_card("Đã được duyệt", ContributionState.approved_count.to_string(), "circle-check", "green", "Thành công"),
-                kpi_card("Bị từ chối", ContributionState.rejected_count.to_string(), "circle-x", "red", "Cần chỉnh sửa"),
+                kpi_card("Tổng đóng góp", ContributionState.total_count.to_string(), "files", "blue", "Tất cả học liệu đã nộp"),
+                kpi_card("Đang chờ duyệt", ContributionState.pending_count.to_string(), "clock", "amber", "Giảng viên đang xem xét", trend="Hàng đợi"),
+                kpi_card("Đã được duyệt", ContributionState.approved_count.to_string(), "circle-check", "green", "Xuất bản kho học liệu", trend="Hoàn tất"),
+                kpi_card("Bị từ chối", ContributionState.rejected_count.to_string(), "circle-x", "red", "Cần nộp lại bản v2.0", trend="Cần sửa"),
                 columns="4",
                 spacing="4",
                 width="100%",
             ),
 
             # ── Tab Filter ──
-            rx.card(
+            rx.box(
                 rx.hstack(
-                    rx.text("Lọc theo trạng thái:", size="2", color="slate.9", weight="medium"),
+                    rx.hstack(
+                        rx.icon("filter", size=16, color="var(--slate-8)"),
+                        rx.text("Lọc theo trạng thái:", size="2", color="slate.11", weight="bold"),
+                        align="center",
+                        spacing="2",
+                    ),
                     rx.hstack(
                         tab_btn("Tất cả", "ALL", ContributionState.total_count, "blue"),
                         tab_btn("Chờ duyệt", "PENDING", ContributionState.pending_count, "amber"),
@@ -764,8 +813,12 @@ def student_contributions_page() -> rx.Component:
                     align="center",
                     spacing="4",
                 ),
-                variant="surface",
-                padding="3",
+                background="white",
+                border="1px solid rgba(226, 232, 240, 0.9)",
+                border_radius="xl",
+                box_shadow="0 1px 3px rgba(0, 0, 0, 0.04)",
+                padding="3.5",
+                width="100%",
             ),
 
             # ── Contribution List ──

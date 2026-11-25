@@ -338,7 +338,7 @@ def citation_chip(cite: Citation) -> rx.Component:
 
 
 def chat_message(msg: ChatMessage) -> rx.Component:
-    """Hiển thị một bong bóng tin nhắn (User hoặc AI)."""
+    """Hiển thị một bong bóng tin nhắn (User hoặc AI) theo phong cách hiện đại."""
     return rx.cond(
         msg.sender == "user",
         # Tin nhắn của User
@@ -346,23 +346,23 @@ def chat_message(msg: ChatMessage) -> rx.Component:
             rx.spacer(),
             rx.box(
                 rx.vstack(
-                    rx.text(msg.content, size="2", color="white", line_height="1.5"),
+                    rx.text(msg.content, size="2", color="white", line_height="1.6"),
                     rx.hstack(
                         rx.spacer(),
-                        rx.text(msg.timestamp, size="1", color="blue.3"),
+                        rx.text(msg.timestamp, size="1", color="rgba(255, 255, 255, 0.75)"),
                         align="center",
                         width="100%",
                     ),
                     spacing="1",
                     align="start",
                 ),
-                bg="blue.9",
+                background="linear-gradient(135deg, #2563eb 0%, #4338ca 100%)",
                 padding_x="4",
                 padding_y="3",
-                border_radius="xl",
+                border_radius="2xl",
                 border_bottom_right_radius="none",
-                max_width=["85%", "75%", "65%"],
-                box_shadow="sm",
+                max_width=rx.breakpoints(initial="85%", sm="75%", md="65%"),
+                box_shadow="0 4px 14px rgba(37, 99, 235, 0.25)",
             ),
             rx.avatar(fallback="SV", size="2", radius="full", color_scheme="blue"),
             spacing="3",
@@ -374,20 +374,20 @@ def chat_message(msg: ChatMessage) -> rx.Component:
         rx.hstack(
             rx.box(
                 rx.icon("sparkles", size=20, color="white"),
-                bg="linear-gradient(135deg, var(--blue-9), var(--indigo-9))",
-                padding="2",
+                background="linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
+                padding="2.5",
                 border_radius="xl",
-                box_shadow="sm",
+                box_shadow="0 4px 12px rgba(79, 70, 229, 0.3)",
             ),
             rx.box(
                 rx.vstack(
                     # Header tin nhắn AI
                     rx.hstack(
-                        rx.text("DocUni AI", size="2", weight="bold", color="slate.12"),
+                        rx.text("DocUni AI Assistant", size="2", weight="bold", color="slate.12"),
                         rx.cond(
                             msg.mode == "rag",
-                            rx.badge("Semantic RAG", color_scheme="green", variant="surface", size="1"),
-                            rx.badge("Giải thích khái niệm", color_scheme="purple", variant="surface", size="1"),
+                            rx.badge("BGE Semantic RAG", color_scheme="green", variant="surface", size="1", border_radius="full"),
+                            rx.badge("Giải thích khái niệm", color_scheme="purple", variant="surface", size="1", border_radius="full"),
                         ),
                         rx.spacer(),
                         rx.text(msg.timestamp, size="1", color="slate.8"),
@@ -402,7 +402,7 @@ def chat_message(msg: ChatMessage) -> rx.Component:
                         width="100%",
                         color="slate.11",
                         font_size="14px",
-                        line_height="1.6",
+                        line_height="1.65",
                     ),
 
                     # Citations Box (nếu có nguồn trích dẫn)
@@ -411,7 +411,7 @@ def chat_message(msg: ChatMessage) -> rx.Component:
                         rx.vstack(
                             rx.divider(color_scheme="gray"),
                             rx.hstack(
-                                rx.icon("bookmark", size=13, color="var(--green-9)"),
+                                rx.icon("bookmark", size=13, color="#16a34a"),
                                 rx.text("Nguồn Trích Dẫn Học Liệu Đối Soát (Semantic Sources):", size="1", weight="bold", color="green.11"),
                                 align="center",
                                 spacing="1",
@@ -436,13 +436,13 @@ def chat_message(msg: ChatMessage) -> rx.Component:
                     align="start",
                     width="100%",
                 ),
-                bg="var(--slate-1)",
-                border="1px solid var(--slate-4)",
-                padding="4",
-                border_radius="xl",
+                background="white",
+                border="1px solid rgba(226, 232, 240, 0.9)",
+                padding="4.5",
+                border_radius="2xl",
                 border_top_left_radius="none",
-                max_width=["90%", "85%", "80%"],
-                box_shadow="sm",
+                max_width=rx.breakpoints(initial="90%", sm="85%", md="80%"),
+                box_shadow="0 2px 10px rgba(0, 0, 0, 0.04)",
             ),
             rx.spacer(),
             spacing="3",
@@ -624,47 +624,53 @@ def student_ai_page() -> rx.Component:
         AuthState.is_logged_in & (AuthState.current_user_role != ""),
         student_page_wrapper(
             rx.vstack(
-            # ── Page Header ──
-            rx.hstack(
+            # ── Modern Hero Banner ──
+            rx.box(
                 rx.hstack(
                     rx.box(
-                        rx.icon("bot", size=28, color="white"),
-                        bg="linear-gradient(135deg, var(--blue-9), var(--indigo-9))",
+                        rx.icon("bot", size=32, color="white"),
+                        background="rgba(255, 255, 255, 0.2)",
                         padding="3",
                         border_radius="xl",
-                        box_shadow="sm",
+                        backdrop_filter="blur(8px)",
                     ),
                     rx.vstack(
                         rx.hstack(
-                            rx.heading("Trợ Lý Học Tập Thông Minh DocUni AI", size="7", weight="bold", color="slate.12"),
-                            rx.badge("RAG v2.5", color_scheme="green", variant="surface", size="1"),
+                            rx.heading("Trợ Lý Học Tập Thông Minh DocUni AI", size="7", weight="bold", color="white"),
+                            rx.badge("BGE-M3 • pgvector RAG", color_scheme="green", variant="solid", size="1", border_radius="full"),
                             align="center",
-                            spacing="2",
+                            spacing="3",
                         ),
                         rx.text(
-                            "Hỏi đáp ngữ nghĩa, trích dẫn tài liệu học phần và đối soát nội dung theo thời gian thực",
+                            "Tìm kiếm ngữ nghĩa, giải thích khái niệm học phần và trích dẫn số trang tài liệu đối soát theo thời gian thực.",
                             size="3",
-                            color="slate.9",
+                            color="rgba(255, 255, 255, 0.9)",
                         ),
                         spacing="1",
                     ),
+                    rx.spacer(),
+                    rx.button(
+                        rx.icon("trash-2", size=14),
+                        "Xóa Hội Thoại",
+                        background="rgba(255, 255, 255, 0.2)",
+                        color="white",
+                        border="1px solid rgba(255, 255, 255, 0.4)",
+                        backdrop_filter="blur(8px)",
+                        border_radius="xl",
+                        size="2",
+                        _hover={"background": "rgba(255, 255, 255, 0.3)"},
+                        on_click=AIAssistantState.clear_chat,
+                    ),
                     align="center",
-                    spacing="3",
+                    width="100%",
                 ),
-                rx.spacer(),
-                rx.button(
-                    rx.icon("trash-2", size=14),
-                    "Xóa đoạn chat",
-                    color_scheme="gray",
-                    variant="surface",
-                    size="2",
-                    on_click=AIAssistantState.clear_chat,
-                ),
-                align="center",
+                background="linear-gradient(135deg, #1e1b4b 0%, #312e81 45%, #4f46e5 100%)",
+                box_shadow="0 10px 25px -5px rgba(79, 70, 229, 0.4)",
+                border_radius="2xl",
+                padding="6",
                 width="100%",
+                margin_bottom="2",
             ),
-
-            rx.divider(color_scheme="gray"),
 
             # ── Main 2-Column Chat Layout ──
             rx.hstack(
@@ -770,7 +776,7 @@ def student_ai_page() -> rx.Component:
                     ),
 
                     spacing="3",
-                    width=["100%", "100%", "320px"],
+                    width=rx.breakpoints(initial="100%", md="320px"),
                     align="start",
                 ),
 

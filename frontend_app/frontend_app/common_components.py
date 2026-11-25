@@ -176,14 +176,14 @@ def acl_denied_dialog() -> rx.Component:
     )
 
 
-# ─── 3. Navbar Sinh Viên Dùng Chung ──────────────────────────────────────────
+# ─── 3. Navbar Sinh Viên Dùng Chung (Modern SaaS Glassmorphism) ───────────────
 
 def student_navbar(active_route: str = "") -> rx.Component:
-    def nav_item(text: str, href: str, icon: str, is_active: bool = False, badge_count: Optional[rx.Var] = None) -> rx.Component:
+    def nav_item(text: str, href: str, icon: str, is_active: bool = False, badge_count: Optional[rx.Var] = None, accent_color: str = "blue") -> rx.Component:
         return rx.link(
             rx.hstack(
-                rx.icon(icon, size=16),
-                rx.text(text, size="2", weight="medium"),
+                rx.icon(icon, size=16, color=rx.cond(is_active, f"var(--{accent_color}-10)", "var(--slate-9)")),
+                rx.text(text, size="2", weight=rx.cond(is_active, "bold", "medium")),
                 rx.cond(
                     badge_count is not None,
                     rx.badge(badge_count, color_scheme="amber", variant="solid", size="1", radius="full"),
@@ -191,13 +191,19 @@ def student_navbar(active_route: str = "") -> rx.Component:
                 ),
                 align="center",
                 spacing="2",
-                padding_x="3",
+                padding_x="3.5",
                 padding_y="2",
-                border_radius="md",
-                bg=rx.cond(is_active, "var(--blue-3)", "transparent"),
-                color=rx.cond(is_active, "var(--blue-11)", "var(--slate-11)"),
-                _hover={"bg": "var(--blue-2)", "color": "var(--blue-10)"},
-                transition="all 0.15s ease",
+                border_radius="xl",
+                bg=rx.cond(is_active, f"var(--{accent_color}-3)", "transparent"),
+                color=rx.cond(is_active, f"var(--{accent_color}-11)", "var(--slate-11)"),
+                border=rx.cond(is_active, f"1px solid var(--{accent_color}-6)", "1px solid transparent"),
+                _hover={
+                    "bg": f"var(--{accent_color}-2)",
+                    "color": f"var(--{accent_color}-10)",
+                    "border_color": f"var(--{accent_color}-4)",
+                    "transform": "translateY(-1px)",
+                },
+                transition="all 0.18s cubic-bezier(0.4, 0, 0.2, 1)",
             ),
             href=href,
             underline="none",
@@ -206,37 +212,45 @@ def student_navbar(active_route: str = "") -> rx.Component:
     return rx.box(
         rx.container(
             rx.hstack(
-                # Logo
+                # Logo với hiệu ứng gradient rực rỡ và bóng mờ hiện đại
                 rx.link(
                     rx.hstack(
                         rx.box(
-                            rx.icon("graduation-cap", size=20, color="white"),
-                            bg="blue.9",
-                            padding="2",
-                            border_radius="lg",
-                            box_shadow="sm",
+                            rx.icon("graduation-cap", size=22, color="white"),
+                            background="linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)",
+                            padding="2.5",
+                            border_radius="xl",
+                            box_shadow="0 4px 12px rgba(37, 99, 235, 0.3)",
+                            transition="transform 0.2s ease",
+                            _hover={"transform": "scale(1.05)"},
                         ),
                         rx.vstack(
-                            rx.text("DocUni", size="4", weight="bold", color="slate.12", line_height="1"),
-                            rx.text("Kho Học Liệu Số", size="1", color="blue.10", weight="bold"),
+                            rx.hstack(
+                                rx.text("DocUni", size="4", weight="bold", color="slate.12", line_height="1", letter_spacing="-0.02em"),
+                                rx.badge("Edu 4.0", color_scheme="indigo", variant="surface", size="1", radius="full"),
+                                align="center",
+                                spacing="2",
+                            ),
+                            rx.text("Kho Học Liệu Số", size="1", color="blue.10", weight="bold", letter_spacing="0.04em"),
                             spacing="0",
                         ),
                         align="center",
-                        spacing="2",
+                        spacing="3",
                     ),
                     href="/",
                     underline="none",
                 ),
 
-                # Navigation Menu Links
+                # Navigation Menu Links với màu sắc phân biệt sinh động
                 rx.hstack(
-                    nav_item("Trang chủ", "/", "home", active_route == "/"),
-                    nav_item("Kho tài liệu", "/documents", "book-open", active_route == "/documents"),
-                    nav_item("Đóng góp tài liệu", "/student/upload", "upload", active_route == "/student/upload"),
-                    nav_item("Theo dõi duyệt", "/student/contributions", "list-checks", active_route == "/student/contributions"),
-                    nav_item("Trợ lý AI", "/student/ai-assistant", "sparkles", active_route == "/student/ai-assistant"),
-                    spacing="1",
-                    display=["none", "none", "flex"],
+                    nav_item("Trang chủ", "/", "home", active_route == "/", accent_color="blue"),
+                    nav_item("Kho tài liệu", "/documents", "book-open", active_route == "/documents", accent_color="blue"),
+                    nav_item("Đóng góp", "/student/upload", "cloud-upload", active_route == "/student/upload", accent_color="teal"),
+                    nav_item("Theo dõi duyệt", "/student/contributions", "list-checks", active_route == "/student/contributions", accent_color="amber"),
+                    nav_item("Trợ lý AI", "/student/ai-assistant", "sparkles", active_route == "/student/ai-assistant", accent_color="purple"),
+                    spacing="2",
+                    display=rx.breakpoints(initial="none", md="flex"),
+                    align="center",
                 ),
 
                 rx.spacer(),
@@ -258,6 +272,8 @@ def student_navbar(active_route: str = "") -> rx.Component:
                                 size="2",
                                 variant="surface",
                                 color_scheme="indigo",
+                                border_radius="lg",
+                                box_shadow="sm",
                             ),
                             href="/lecturer/approval",
                         ),
@@ -269,9 +285,12 @@ def student_navbar(active_route: str = "") -> rx.Component:
                             rx.icon("log-out", size=15),
                             "Đăng xuất",
                             size="2",
-                            variant="ghost",
+                            variant="soft",
                             color_scheme="red",
+                            border_radius="lg",
                             on_click=AuthState.logout,
+                            _hover={"bg": "var(--red-3)", "transform": "translateY(-1px)"},
+                            transition="all 0.15s ease",
                         ),
                         rx.link(
                             rx.button(
@@ -280,6 +299,7 @@ def student_navbar(active_route: str = "") -> rx.Component:
                                 size="2",
                                 variant="solid",
                                 color_scheme="blue",
+                                border_radius="lg",
                             ),
                             href="/login",
                         ),
@@ -289,15 +309,17 @@ def student_navbar(active_route: str = "") -> rx.Component:
                 ),
                 align="center",
                 justify="between",
-                height="64px",
+                height="68px",
             ),
             size="4",
         ),
-        border_b="1px solid var(--slate-4)",
-        bg="white",
+        border_b="1px solid rgba(226, 232, 240, 0.8)",
+        background="rgba(255, 255, 255, 0.92)",
+        backdrop_filter="blur(16px)",
         position="sticky",
         top="0",
         z_index="50",
+        box_shadow="0 2px 10px rgba(0, 0, 0, 0.03)",
     )
 
 
@@ -332,23 +354,23 @@ def lecturer_sidebar(current_route: str = "") -> rx.Component:
 
     return rx.box(
         rx.vstack(
-            # Logo Portal
+            # Logo Portal với gradient sắc nét
             rx.link(
                 rx.hstack(
                     rx.box(
                         rx.icon("shield-check", size=22, color="white"),
-                        bg="indigo.9",
-                        padding="2",
-                        border_radius="lg",
-                        box_shadow="sm",
+                        background="linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
+                        padding="2.5",
+                        border_radius="xl",
+                        box_shadow="0 4px 12px rgba(79, 70, 229, 0.35)",
                     ),
                     rx.vstack(
-                        rx.text("DocUni", size="4", weight="bold", color="slate.12", line_height="1"),
-                        rx.text("Lecturer Portal", size="1", color="indigo.10", weight="bold", letter_spacing="0.05em"),
+                        rx.text("DocUni", size="4", weight="bold", color="slate.12", line_height="1", letter_spacing="-0.02em"),
+                        rx.text("Cổng Giảng Viên", size="1", color="indigo.10", weight="bold", letter_spacing="0.04em"),
                         spacing="0",
                     ),
                     align="center",
-                    spacing="2",
+                    spacing="3",
                     padding_y="3",
                     padding_x="2",
                 ),
@@ -357,7 +379,7 @@ def lecturer_sidebar(current_route: str = "") -> rx.Component:
                 width="100%",
             ),
 
-            rx.divider(color_scheme="gray", margin_y="2"),
+            rx.divider(color_scheme="gray", margin_y="1"),
 
             # Lecturer Profile Card
             rx.box(
@@ -366,36 +388,38 @@ def lecturer_sidebar(current_route: str = "") -> rx.Component:
                         rx.avatar(fallback="GV", size="2", radius="full", color_scheme="indigo"),
                         rx.vstack(
                             rx.text("TS. Nguyễn Văn An", size="2", weight="bold", color="slate.12"),
-                            rx.text("Cong nghe thong tin - Kiểm duyệt viên", size="1", color="slate.10"),
+                            rx.text("Khoa CNTT • Thẩm định viên", size="1", color="slate.10"),
                             spacing="0",
                         ),
                         align="center",
-                        spacing="2",
+                        spacing="3",
                     ),
                     rx.badge(
                         rx.hstack(rx.icon("bell", size=12), rx.text("Chờ duyệt: ", GlobalDocState.pending_count, " tài liệu"), align="center", spacing="1"),
                         color_scheme="amber",
                         variant="surface",
                         size="1",
+                        radius="full",
                         width="100%",
                         justify="center",
                     ),
                     spacing="2",
                     width="100%",
                 ),
-                padding="3",
-                border_radius="lg",
-                bg="slate.2",
-                border="1px solid var(--slate-4)",
+                padding="3.5",
+                border_radius="xl",
+                background="linear-gradient(135deg, rgba(238, 242, 255, 0.8) 0%, rgba(245, 243, 255, 0.8) 100%)",
+                border="1px solid rgba(199, 210, 254, 0.6)",
+                box_shadow="sm",
                 width="100%",
                 margin_bottom="3",
             ),
 
-            # Navigation Menu Items
+            # Navigation Menu Items với icon và hiệu ứng hover hiện đại
             rx.vstack(
                 sidebar_item("Bảng điều khiển", "/lecturer/dashboard", "layout-dashboard", current_route == "/lecturer/dashboard"),
-                sidebar_item("Kho tài liệu của tôi", "/lecturer/documents", "folder-kanban", current_route == "/lecturer/documents"),
-                sidebar_item("Kiểm duyệt tài liệu", "/lecturer/approval", "clipboard-check", current_route == "/lecturer/approval", badge_var=GlobalDocState.pending_count),
+                sidebar_item("Kho tài liệu môn học", "/lecturer/documents", "folder-kanban", current_route == "/lecturer/documents"),
+                sidebar_item("Kiểm duyệt học liệu", "/lecturer/approval", "clipboard-check", current_route == "/lecturer/approval", badge_var=GlobalDocState.pending_count),
                 spacing="2",
                 width="100%",
             ),
@@ -409,79 +433,127 @@ def lecturer_sidebar(current_route: str = "") -> rx.Component:
                 rx.link(
                     rx.hstack(
                         rx.icon("external-link", size=15, color="var(--slate-9)"),
-                        rx.text("Xem Cổng Sinh viên", size="2", color="slate.10"),
+                        rx.text("Xem Cổng Sinh viên", size="2", color="slate.11", weight="medium"),
                         align="center",
                         spacing="2",
                         padding="2",
+                        border_radius="md",
+                        _hover={"bg": "var(--slate-3)", "color": "var(--blue-10)"},
                     ),
                     href="/documents",
                     underline="none",
+                    width="100%",
                 ),
                 rx.button(
                     rx.hstack(
                         rx.icon("log-out", size=15, color="var(--red-9)"),
-                        rx.text("Đăng xuất", size="2", color="red.10"),
+                        rx.text("Đăng xuất", size="2", color="red.10", weight="medium"),
                         align="center",
                         spacing="2",
-                        padding="2",
                     ),
-                    variant="ghost",
+                    variant="soft",
+                    color_scheme="red",
                     on_click=AuthState.logout,
                     width="100%",
+                    border_radius="lg",
                 ),
-                spacing="1",
+                spacing="2",
                 width="100%",
             ),
             height="100%",
             padding="4",
         ),
-        width="260px",
-        min_width="260px",
+        width="270px",
+        min_width="270px",
         height="100vh",
-        border_r="1px solid var(--slate-4)",
-        bg="white",
+        border_r="1px solid rgba(226, 232, 240, 0.8)",
+        background="white",
         position="sticky",
         top="0",
-        display=["none", "none", "block"],
+        display=rx.breakpoints(initial="none", md="block"),
+        box_shadow="2px 0 10px rgba(0, 0, 0, 0.02)",
     )
 
 
 # ─── 5. KPI Card & Badge Trạng Thái ──────────────────────────────────────────
 
-def kpi_card(title: str, value: Any, icon: str, color_scheme: str = "blue", description: str = "") -> rx.Component:
+def file_type_badge(file_name: str) -> rx.Component:
+    """Badge hiển thị định dạng tệp thông minh kèm icon và màu sắc đặc trưng."""
+    fn_lower = file_name.lower()
+    return rx.cond(
+        fn_lower.contains(".pdf"),
+        rx.badge(rx.hstack(rx.icon("file-text", size=12), rx.text("PDF", size="1"), align="center", spacing="1"), color_scheme="red", variant="surface", radius="full"),
+        rx.cond(
+            fn_lower.contains(".ppt") | fn_lower.contains(".pptx"),
+            rx.badge(rx.hstack(rx.icon("presentation", size=12), rx.text("PPTX", size="1"), align="center", spacing="1"), color_scheme="orange", variant="surface", radius="full"),
+            rx.cond(
+                fn_lower.contains(".doc") | fn_lower.contains(".docx"),
+                rx.badge(rx.hstack(rx.icon("file-type-2", size=12), rx.text("DOCX", size="1"), align="center", spacing="1"), color_scheme="blue", variant="surface", radius="full"),
+                rx.cond(
+                    fn_lower.contains(".xls") | fn_lower.contains(".xlsx"),
+                    rx.badge(rx.hstack(rx.icon("sheet", size=12), rx.text("XLSX", size="1"), align="center", spacing="1"), color_scheme="green", variant="surface", radius="full"),
+                    rx.badge(rx.hstack(rx.icon("file", size=12), rx.text("FILE", size="1"), align="center", spacing="1"), color_scheme="gray", variant="surface", radius="full"),
+                ),
+            ),
+        ),
+    )
+
+
+def kpi_card(title: str, value: Any, icon: str, color_scheme: str = "blue", description: str = "", trend: str = "") -> rx.Component:
     return rx.card(
-        rx.hstack(
-            rx.box(
-                rx.icon(icon, size=22, color=f"var(--{color_scheme}-10)"),
-                bg=f"var(--{color_scheme}-3)",
-                padding="3",
-                border_radius="xl",
+        rx.vstack(
+            rx.hstack(
+                rx.box(
+                    rx.icon(icon, size=24, color=f"var(--{color_scheme}-10)"),
+                    bg=f"var(--{color_scheme}-3)",
+                    padding="3",
+                    border_radius="xl",
+                    box_shadow=f"0 4px 12px var(--{color_scheme}-4)",
+                ),
+                rx.spacer(),
+                rx.cond(
+                    trend != "",
+                    rx.badge(trend, color_scheme=color_scheme, variant="surface", size="1", radius="full"),
+                    rx.fragment(),
+                ),
+                align="center",
+                width="100%",
             ),
             rx.vstack(
-                rx.text(title, size="1", color="slate.10", weight="medium"),
-                rx.heading(value, size="6", weight="bold", color="slate.12"),
+                rx.text(title, size="2", color="slate.10", weight="medium"),
+                rx.heading(value, size="7", weight="bold", color="slate.12", letter_spacing="-0.02em"),
                 rx.cond(
                     description != "",
                     rx.text(description, size="1", color="slate.9"),
                     rx.fragment(),
                 ),
                 spacing="1",
+                align="start",
             ),
-            align="center",
             spacing="3",
+            width="100%",
         ),
         variant="surface",
-        size="2",
+        padding="5",
+        border_radius="xl",
+        border=f"1px solid var(--{color_scheme}-4)",
+        box_shadow="0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 20px -5px rgba(0, 0, 0, 0.02)",
+        _hover={
+            "transform": "translateY(-3px)",
+            "box_shadow": f"0 12px 24px -5px var(--{color_scheme}-3)",
+            "border_color": f"var(--{color_scheme}-7)",
+        },
+        transition="all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
     )
 
 
 def status_badge(status: str) -> rx.Component:
     return rx.match(
         status,
-        ("PENDING", rx.badge(rx.hstack(rx.icon("clock", size=12), rx.text("Chờ duyệt", size="1"), align="center", spacing="1"), color_scheme="amber", variant="surface")),
-        ("APPROVED", rx.badge(rx.hstack(rx.icon("circle-check", size=12), rx.text("Đã duyệt", size="1"), align="center", spacing="1"), color_scheme="green", variant="surface")),
-        ("REJECTED", rx.badge(rx.hstack(rx.icon("circle-x", size=12), rx.text("Bị từ chối", size="1"), align="center", spacing="1"), color_scheme="red", variant="surface")),
-        rx.badge(status, color_scheme="gray", variant="surface")
+        ("PENDING", rx.badge(rx.hstack(rx.icon("clock", size=12), rx.text("Chờ duyệt", size="1"), align="center", spacing="1"), color_scheme="amber", variant="surface", radius="full")),
+        ("APPROVED", rx.badge(rx.hstack(rx.icon("circle-check", size=12), rx.text("Đã duyệt", size="1"), align="center", spacing="1"), color_scheme="green", variant="surface", radius="full")),
+        ("REJECTED", rx.badge(rx.hstack(rx.icon("circle-x", size=12), rx.text("Bị từ chối", size="1"), align="center", spacing="1"), color_scheme="red", variant="surface", radius="full")),
+        rx.badge(status, color_scheme="gray", variant="surface", radius="full")
     )
 
 
@@ -494,25 +566,51 @@ def student_page_wrapper(content: rx.Component, active_route: str = "") -> rx.Co
         rx.container(
             content,
             size="4",
-            padding_y="6",
-            min_height="calc(100vh - 140px)",
+            padding_y="7",
+            min_height="calc(100vh - 160px)",
         ),
         # Footer
         rx.box(
             rx.container(
                 rx.hstack(
-                    rx.text("© 2026 DocUni - Hệ thống Quản trị & Đóng góp Học liệu Số (Nhóm 3)", size="2", color="slate.9"),
+                    rx.hstack(
+                        rx.box(
+                            rx.box(
+                                width="8px",
+                                height="8px",
+                                border_radius="full",
+                                bg="#10b981",
+                                box_shadow="0 0 8px #10b981",
+                            ),
+                            display="flex",
+                            align_items="center",
+                            justify_content="center",
+                        ),
+                        rx.text("PostgreSQL Online", size="1", color="slate.10", weight="medium"),
+                        align="center",
+                        spacing="2",
+                    ),
                     rx.spacer(),
-                    rx.text("Python Reflex Framework", size="1", color="slate.8", weight="bold"),
+                    rx.text("© 2026 DocUni – Nền tảng Học liệu Số & Trợ lý AI Thông minh", size="2", color="slate.9"),
+                    rx.spacer(),
+                    rx.hstack(
+                        rx.badge("Reflex 0.10.0", color_scheme="blue", variant="surface", size="1"),
+                        rx.badge("Django REST API", color_scheme="indigo", variant="surface", size="1"),
+                        rx.badge("AI Semantic RAG", color_scheme="purple", variant="surface", size="1"),
+                        spacing="2",
+                        display=rx.breakpoints(initial="none", md="flex"),
+                    ),
                     align="center",
+                    width="100%",
                 ),
                 size="4",
                 padding_y="4",
             ),
-            border_t="1px solid var(--slate-4)",
-            bg="white",
+            border_t="1px solid rgba(226, 232, 240, 0.8)",
+            bg="rgba(255, 255, 255, 0.9)",
+            backdrop_filter="blur(12px)",
         ),
-        bg="slate.1",
+        background="linear-gradient(180deg, #f8fafc 0%, #f1f5f9 50%, #eef2ff 100%)",
         min_height="100vh",
     )
 
@@ -524,18 +622,28 @@ def lecturer_page_wrapper(content: rx.Component, current_route: str = "") -> rx.
             rx.box(
                 rx.hstack(
                     rx.hstack(
-                        rx.icon("graduation-cap", size=18, color="var(--indigo-10)"),
-                        rx.text("Cổng Nghiệp Vụ Giảng Viên - Phê Duyệt & Phân Quyền Học Liệu", size="2", weight="bold", color="indigo.11"),
+                        rx.box(
+                            rx.icon("graduation-cap", size=18, color="var(--indigo-10)"),
+                            bg="indigo.3",
+                            padding="1.5",
+                            border_radius="md",
+                        ),
+                        rx.vstack(
+                            rx.text("Cổng Nghiệp Vụ Giảng Viên", size="2", weight="bold", color="indigo.11"),
+                            rx.text("Phê duyệt, phân quyền & quản lý học liệu đại học", size="1", color="slate.9"),
+                            spacing="0",
+                        ),
                         align="center",
-                        spacing="2",
+                        spacing="3",
                     ),
                     rx.spacer(),
                     user_profile_switcher(),
                     align="center",
                     padding_x="6",
                     padding_y="3.5",
-                    border_b="1px solid var(--slate-4)",
-                    bg="white",
+                    border_b="1px solid rgba(226, 232, 240, 0.8)",
+                    bg="rgba(255, 255, 255, 0.9)",
+                    backdrop_filter="blur(12px)",
                 ),
                 rx.box(
                     content,
@@ -543,12 +651,12 @@ def lecturer_page_wrapper(content: rx.Component, current_route: str = "") -> rx.
                 ),
                 width="100%",
                 min_height="100vh",
-                bg="slate.1",
+                background="linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
             ),
             flex="1",
             min_width="0",
         ),
         spacing="0",
         min_height="100vh",
-        bg="slate.1",
+        background="#f8fafc",
     )

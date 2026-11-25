@@ -274,19 +274,19 @@ def lecturer_dashboard_page() -> rx.Component:
 
             rx.divider(color_scheme="gray"),
 
-            # ── 4 KPI Cards ──
+            # ── Modern 4 KPI Cards ──
             rx.grid(
-                rx.card(
+                rx.box(
                     rx.vstack(
                         rx.hstack(
                             rx.box(
-                                rx.icon("files", size=22, color="var(--blue-9)"),
-                                bg="blue.3",
+                                rx.icon("files", size=22, color="#2563eb"),
+                                background="rgba(37, 99, 235, 0.12)",
                                 padding="2.5",
                                 border_radius="xl",
                             ),
                             rx.spacer(),
-                            rx.badge("+1 môn mới", color_scheme="blue", variant="surface", size="1"),
+                            rx.badge("Đang hoạt động", color_scheme="blue", variant="surface", size="1", border_radius="full"),
                             align="center",
                             width="100%",
                         ),
@@ -296,19 +296,23 @@ def lecturer_dashboard_page() -> rx.Component:
                         align="start",
                         width="100%",
                     ),
+                    background="white",
+                    border="1px solid rgba(226, 232, 240, 0.9)",
+                    border_radius="xl",
+                    box_shadow="0 1px 3px rgba(0, 0, 0, 0.04)",
                     padding="4",
                 ),
-                rx.card(
+                rx.box(
                     rx.vstack(
                         rx.hstack(
                             rx.box(
-                                rx.icon("eye", size=22, color="var(--indigo-9)"),
-                                bg="indigo.3",
+                                rx.icon("eye", size=22, color="#4f46e5"),
+                                background="rgba(79, 70, 229, 0.12)",
                                 padding="2.5",
                                 border_radius="xl",
                             ),
                             rx.spacer(),
-                            rx.badge("+18.4% tuần này", color_scheme="indigo", variant="surface", size="1"),
+                            rx.badge("+18.4% tuần này", color_scheme="indigo", variant="surface", size="1", border_radius="full"),
                             align="center",
                             width="100%",
                         ),
@@ -318,19 +322,23 @@ def lecturer_dashboard_page() -> rx.Component:
                         align="start",
                         width="100%",
                     ),
+                    background="white",
+                    border="1px solid rgba(226, 232, 240, 0.9)",
+                    border_radius="xl",
+                    box_shadow="0 1px 3px rgba(0, 0, 0, 0.04)",
                     padding="4",
                 ),
-                rx.card(
+                rx.box(
                     rx.vstack(
                         rx.hstack(
                             rx.box(
-                                rx.icon("download", size=22, color="var(--green-9)"),
-                                bg="green.3",
+                                rx.icon("download", size=22, color="#16a34a"),
+                                background="rgba(22, 163, 74, 0.12)",
                                 padding="2.5",
                                 border_radius="xl",
                             ),
                             rx.spacer(),
-                            rx.badge("+24.1% tuần này", color_scheme="green", variant="surface", size="1"),
+                            rx.badge("+24.1% tuần này", color_scheme="green", variant="surface", size="1", border_radius="full"),
                             align="center",
                             width="100%",
                         ),
@@ -340,19 +348,23 @@ def lecturer_dashboard_page() -> rx.Component:
                         align="start",
                         width="100%",
                     ),
+                    background="white",
+                    border="1px solid rgba(226, 232, 240, 0.9)",
+                    border_radius="xl",
+                    box_shadow="0 1px 3px rgba(0, 0, 0, 0.04)",
                     padding="4",
                 ),
-                rx.card(
+                rx.box(
                     rx.vstack(
                         rx.hstack(
                             rx.box(
-                                rx.icon("clock", size=22, color="var(--amber-9)"),
-                                bg="amber.3",
+                                rx.icon("clock", size=22, color="#d97706"),
+                                background="rgba(217, 119, 6, 0.12)",
                                 padding="2.5",
                                 border_radius="xl",
                             ),
                             rx.spacer(),
-                            rx.badge("Cần xử lý", color_scheme="amber", variant="solid", size="1"),
+                            rx.badge("Cần xử lý", color_scheme="amber", variant="solid", size="1", border_radius="full"),
                             align="center",
                             width="100%",
                         ),
@@ -362,6 +374,10 @@ def lecturer_dashboard_page() -> rx.Component:
                         align="start",
                         width="100%",
                     ),
+                    background="white",
+                    border="1px solid rgba(226, 232, 240, 0.9)",
+                    border_radius="xl",
+                    box_shadow="0 1px 3px rgba(0, 0, 0, 0.04)",
                     padding="4",
                 ),
                 columns="4",

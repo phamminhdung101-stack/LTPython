@@ -886,6 +886,16 @@ class GlobalDocState(rx.State):
         return [d for d in self.documents if d.get("uploader_id") == uid]
 
     @rx.var
+    def total_downloads_count(self) -> int:
+        return sum(int(d.get("downloads", 0)) for d in self.documents)
+
+    @rx.var
+    def recent_approved_docs(self) -> List[Dict[str, Any]]:
+        """Lấy 4 tài liệu đã duyệt mới nhất để hiển thị tại trang chủ sinh viên."""
+        approved = [d for d in self.documents if d.get("status") == "APPROVED"]
+        return approved[:4]
+
+    @rx.var
     def public_documents(self) -> List[Dict[str, Any]]:
         """Kho học liệu chung: chỉ hiện các tài liệu đã được duyệt (APPROVED)."""
         docs = [d for d in self.documents if d.get("status") == "APPROVED"]

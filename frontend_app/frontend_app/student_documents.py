@@ -15,10 +15,26 @@ Tính năng chính:
 """
 
 import reflex as rx
-from typing import Dict, Any
-from .common_components import student_page_wrapper
+from typing import Dict, Any, TypedDict
+from .common_components import student_page_wrapper, file_type_badge
 from .data_store import GlobalDocState, FOLDER_TREE_DATA
 from .auth import AuthState, login_page
+
+
+class DocumentCardData(TypedDict):
+    id: str
+    file_name: str
+    current_version: str
+    is_public: bool
+    title: str
+    subject_code: str
+    folder_path: str
+    description: str
+    matched_snippet: str
+    tag_str: str
+    uploader_name: str
+    views: int
+    downloads: int
 
 
 # ─── 1. Component Cây Thư Mục Tương Tác (Task 2: Folder Tree) ─────────────────
@@ -103,20 +119,26 @@ def folder_tree_sidebar() -> rx.Component:
         rx.vstack(
             # Tiêu đề Cây thư mục
             rx.hstack(
-                rx.icon("folder-tree", size=18, color="var(--blue-10)"),
+                rx.box(
+                    rx.icon("folder-tree", size=18, color="var(--blue-10)"),
+                    bg="blue.3",
+                    padding="1.5",
+                    border_radius="md",
+                ),
                 rx.heading("Cây Thư Mục Học Liệu", size="3", weight="bold", color="slate.12"),
                 rx.spacer(),
                 rx.button(
                     rx.icon("rotate-ccw", size=12),
                     "Tất cả",
                     size="1",
-                    variant="ghost",
+                    variant="surface",
                     color_scheme="gray",
+                    border_radius="md",
                     on_click=GlobalDocState.select_tree_filter("RESET", ""),
                 ),
                 align="center",
                 width="100%",
-                padding_bottom="2",
+                padding_bottom="2.5",
                 border_b="1px solid var(--slate-4)",
             ),
             # Danh sách phân cấp
@@ -124,32 +146,32 @@ def folder_tree_sidebar() -> rx.Component:
                 *[faculty_group(fac) for fac in FOLDER_TREE_DATA],
                 spacing="3",
                 width="100%",
+                padding_top="1",
             ),
             spacing="3",
             width="100%",
         ),
         variant="surface",
-        padding="4",
-        width=["100%", "100%", "300px"],
-        min_width=["100%", "100%", "300px"],
+        padding="4.5",
+        width=rx.breakpoints(initial="100%", md="300px"),
+        min_width=rx.breakpoints(initial="100%", md="300px"),
+        border_radius="2xl",
+        border="1px solid var(--slate-4)",
+        background="white",
+        box_shadow="0 1px 3px rgba(0, 0, 0, 0.03)",
         height="fit-content",
     )
 
 
 # ─── 2. Thẻ Tài Liệu (Document Card) ──────────────────────────────────────────
 
-def document_card(doc: Dict[str, Any]) -> rx.Component:
-    """Thẻ tài liệu có nhãn bảo mật ACL, nhãn phiên bản và các nút tương tác."""
+def document_card(doc: rx.Var[DocumentCardData]) -> rx.Component:
+    """Thẻ tài liệu có nhãn định dạng tệp chuyên biệt, phiên bản, ACL và nút tương tác hiện đại."""
     return rx.card(
         rx.vstack(
-            # Header: Loại tài liệu, Phiên bản & Cờ bảo mật ACL
+            # Header: Định dạng tệp riêng biệt (PDF, PPTX, DOCX), Phiên bản & Cờ bảo mật ACL
             rx.hstack(
-                rx.badge(
-                    rx.hstack(rx.icon("file-text", size=12), rx.text(doc["type_label"], size="1"), align="center", spacing="1"),
-                    color_scheme="blue",
-                    variant="surface",
-                    radius="full",
-                ),
+                file_type_badge(doc["file_name"]),
                 rx.badge(
                     rx.hstack(rx.icon("git-commit-horizontal", size=11), rx.text(doc["current_version"], size="1", weight="bold"), align="center", spacing="1"),
                     color_scheme="violet",
@@ -160,8 +182,8 @@ def document_card(doc: Dict[str, Any]) -> rx.Component:
                 # Cờ phân quyền ACL
                 rx.cond(
                     doc["is_public"],
-                    rx.badge(rx.hstack(rx.icon("globe", size=11), rx.text("Công khai", size="1"), align="center", spacing="1"), color_scheme="green", variant="surface"),
-                    rx.badge(rx.hstack(rx.icon("lock", size=11), rx.text("Nội bộ theo Lớp", size="1"), align="center", spacing="1"), color_scheme="orange", variant="surface"),
+                    rx.badge(rx.hstack(rx.icon("globe", size=11), rx.text("Công khai", size="1"), align="center", spacing="1"), color_scheme="green", variant="surface", radius="full"),
+                    rx.badge(rx.hstack(rx.icon("lock", size=11), rx.text("Nội bộ theo Lớp", size="1"), align="center", spacing="1"), color_scheme="orange", variant="surface", radius="full"),
                 ),
                 align="center",
                 width="100%",
@@ -169,14 +191,19 @@ def document_card(doc: Dict[str, Any]) -> rx.Component:
 
             # Tiêu đề & Môn học
             rx.vstack(
-                rx.heading(doc["title"], size="4", weight="bold", color="slate.12", line_height="1.3"),
+                rx.heading(doc["title"], size="4", weight="bold", color="slate.12", line_height="1.3", line_clamp=2),
                 rx.hstack(
-                    rx.badge(doc["subject_code"], color_scheme="blue", variant="soft", size="1"),
-                    rx.text(doc["folder_path"], size="1", color="slate.9", truncate=True),
+                    rx.badge(doc["subject_code"], color_scheme="blue", variant="soft", size="1", radius="full"),
+                    rx.hstack(
+                        rx.icon("folder", size=12, color="var(--slate-8)"),
+                        rx.text(doc["folder_path"], size="1", color="slate.9", truncate=True),
+                        align="center",
+                        spacing="1",
+                    ),
                     align="center",
                     spacing="2",
                 ),
-                spacing="1",
+                spacing="2",
                 align="start",
                 width="100%",
             ),
@@ -203,8 +230,8 @@ def document_card(doc: Dict[str, Any]) -> rx.Component:
                         wrap="wrap",
                     ),
                     bg="var(--blue-2)",
-                    padding="2",
-                    border_radius="md",
+                    padding="2.5",
+                    border_radius="lg",
                     border_left="3px solid var(--blue-9)",
                     width="100%",
                 ),
@@ -221,7 +248,7 @@ def document_card(doc: Dict[str, Any]) -> rx.Component:
 
             rx.divider(color_scheme="gray", margin_y="1"),
 
-            # Footer: Uploader, Views, Downloads & Buttons
+            # Footer: Uploader, Views, Downloads
             rx.hstack(
                 rx.hstack(
                     rx.icon("user", size=12, color="var(--slate-8)"),
@@ -245,31 +272,36 @@ def document_card(doc: Dict[str, Any]) -> rx.Component:
             # Action Buttons Row
             rx.hstack(
                 rx.button(
-                    rx.icon("file-text", size=14),
-                    "Mở / Tải tài liệu",
+                    rx.icon("eye", size=14),
+                    "Xem & Tải tài liệu",
                     size="2",
                     color_scheme="blue",
                     variant="solid",
                     on_click=GlobalDocState.open_document(doc["id"]),
                     flex="1",
+                    border_radius="lg",
+                    box_shadow="0 2px 6px rgba(37, 99, 235, 0.2)",
+                    _hover={"transform": "translateY(-1px)"},
                 ),
                 rx.tooltip(
                     rx.icon_button(
-                        rx.icon("history", size=14),
+                        rx.icon("history", size=15),
                         size="2",
                         variant="surface",
                         color_scheme="violet",
                         on_click=GlobalDocState.open_version_modal(doc["id"]),
+                        border_radius="lg",
                     ),
                     content="Xem lịch sử các phiên bản",
                 ),
                 rx.tooltip(
                     rx.icon_button(
-                        rx.icon("file-clock", size=14),
+                        rx.icon("file-clock", size=15),
                         size="2",
                         variant="surface",
                         color_scheme="gray",
                         on_click=GlobalDocState.open_audit_modal(doc["id"]),
+                        border_radius="lg",
                     ),
                     content="Xem nhật ký kiểm toán (Audit Logs)",
                 ),
@@ -282,9 +314,17 @@ def document_card(doc: Dict[str, Any]) -> rx.Component:
             width="100%",
         ),
         variant="surface",
-        padding="4",
-        _hover={"box_shadow": "md", "border_color": "var(--blue-7)"},
-        transition="all 0.2s ease",
+        padding="4.5",
+        border_radius="2xl",
+        border="1px solid var(--slate-4)",
+        background="white",
+        box_shadow="0 1px 3px rgba(0, 0, 0, 0.04)",
+        _hover={
+            "box_shadow": "0 10px 25px -5px rgba(0, 0, 0, 0.08)",
+            "border_color": "var(--blue-7)",
+            "transform": "translateY(-2px)",
+        },
+        transition="all 0.22s ease",
     )
 
 
@@ -298,12 +338,12 @@ def document_detail_modal() -> rx.Component:
             rx.vstack(
                 # Modal Header
                 rx.hstack(
-                    rx.badge(doc.get("type_label", "Tài liệu"), color_scheme="blue", variant="surface"),
-                    rx.badge(doc.get("current_version", "v1.0"), color_scheme="violet", variant="solid"),
+                    rx.badge(doc.get("type_label", "Tài liệu"), color_scheme="blue", variant="surface", radius="full"),
+                    rx.badge(doc.get("current_version", "v1.0"), color_scheme="violet", variant="solid", radius="full"),
                     rx.cond(
                         doc.get("is_public", True),
-                        rx.badge("Công khai", color_scheme="green", variant="surface"),
-                        rx.badge("Nội bộ theo Lớp", color_scheme="orange", variant="surface"),
+                        rx.badge(rx.hstack(rx.icon("globe", size=12), rx.text("Công khai", size="1"), align="center", spacing="1"), color_scheme="green", variant="surface", radius="full"),
+                        rx.badge(rx.hstack(rx.icon("lock", size=12), rx.text("Nội bộ theo Lớp", size="1"), align="center", spacing="1"), color_scheme="orange", variant="surface", radius="full"),
                     ),
                     rx.spacer(),
                     rx.dialog.close(
@@ -313,23 +353,76 @@ def document_detail_modal() -> rx.Component:
                     width="100%",
                 ),
 
-                rx.heading(doc.get("title", ""), size="5", weight="bold", color="slate.12"),
-                rx.text(doc.get("folder_path", ""), size="2", color="slate.9"),
+                rx.heading(doc.get("title", ""), size="6", weight="bold", color="slate.12", letter_spacing="-0.02em"),
+                rx.hstack(
+                    rx.icon("folder", size=14, color="var(--slate-8)"),
+                    rx.text(doc.get("folder_path", ""), size="2", color="slate.9"),
+                    align="center",
+                    spacing="2",
+                ),
 
                 rx.divider(color_scheme="gray"),
 
                 # Metadata Cards
                 rx.grid(
-                    rx.box(rx.text("Người đóng góp:", size="1", color="slate.9"), rx.text(doc.get("uploader_name", ""), size="2", weight="bold")),
-                    rx.box(rx.text("Môn học:", size="1", color="slate.9"), rx.text(doc.get("subject_name", ""), size="2", weight="bold")),
-                    rx.box(rx.text("Tên tệp:", size="1", color="slate.9"), rx.text(doc.get("file_name", ""), size="2", weight="bold")),
-                    rx.box(rx.text("Dung lượng:", size="1", color="slate.9"), rx.text(doc.get("file_size", ""), size="2", weight="bold")),
+                    rx.box(
+                        rx.hstack(
+                            rx.icon("user", size=14, color="var(--blue-9)"),
+                            rx.text("Người đóng góp:", size="1", color="slate.9"),
+                            align="center",
+                            spacing="2",
+                        ),
+                        rx.text(doc.get("uploader_name", ""), size="2", weight="bold", color="slate.12"),
+                        padding="2.5",
+                        border_radius="md",
+                        bg="white",
+                        border="1px solid var(--slate-4)",
+                    ),
+                    rx.box(
+                        rx.hstack(
+                            rx.icon("book-open", size=14, color="var(--indigo-9)"),
+                            rx.text("Môn học:", size="1", color="slate.9"),
+                            align="center",
+                            spacing="2",
+                        ),
+                        rx.text(doc.get("subject_name", ""), size="2", weight="bold", color="slate.12"),
+                        padding="2.5",
+                        border_radius="md",
+                        bg="white",
+                        border="1px solid var(--slate-4)",
+                    ),
+                    rx.box(
+                        rx.hstack(
+                            rx.icon("file", size=14, color="var(--teal-9)"),
+                            rx.text("Tên tệp:", size="1", color="slate.9"),
+                            align="center",
+                            spacing="2",
+                        ),
+                        rx.text(doc.get("file_name", ""), size="2", weight="bold", color="slate.12", truncate=True),
+                        padding="2.5",
+                        border_radius="md",
+                        bg="white",
+                        border="1px solid var(--slate-4)",
+                    ),
+                    rx.box(
+                        rx.hstack(
+                            rx.icon("hard-drive", size=14, color="var(--amber-9)"),
+                            rx.text("Dung lượng:", size="1", color="slate.9"),
+                            align="center",
+                            spacing="2",
+                        ),
+                        rx.text(doc.get("file_size", ""), size="2", weight="bold", color="slate.12"),
+                        padding="2.5",
+                        border_radius="md",
+                        bg="white",
+                        border="1px solid var(--slate-4)",
+                    ),
                     columns="2",
                     spacing="3",
                     width="100%",
                     bg="slate.2",
-                    padding="3",
-                    border_radius="lg",
+                    padding="3.5",
+                    border_radius="xl",
                 ),
 
                 # Khung Đọc Trước Nội Dung (Document Preview)
@@ -340,15 +433,22 @@ def document_detail_modal() -> rx.Component:
                         align="center",
                         spacing="2",
                     ),
-                    rx.scroll_area(
-                        rx.code_block(
-                            doc.get("preview_text", "Đang tải bản xem trước..."),
-                            language="markdown",
-                            wrap_long_lines=True,
+                    rx.box(
+                        rx.scroll_area(
+                            rx.code_block(
+                                doc.get("preview_text", "Đang tải bản xem trước..."),
+                                language="markdown",
+                                wrap_long_lines=True,
+                            ),
+                            type="always",
+                            scrollbars="vertical",
+                            style={"max_height": "220px"},
+                            width="100%",
                         ),
-                        type="always",
-                        scrollbars="vertical",
-                        style={"max_height": "200px"},
+                        padding="2",
+                        border_radius="lg",
+                        background="var(--slate-2)",
+                        border="1px solid var(--slate-4)",
                         width="100%",
                     ),
                     spacing="2",
@@ -363,22 +463,29 @@ def document_detail_modal() -> rx.Component:
                         variant="surface",
                         color_scheme="gray",
                         on_click=GlobalDocState.close_detail_modal,
+                        border_radius="lg",
                     ),
                     rx.button(
-                        rx.icon("download", size=15),
+                        rx.icon("download", size=16),
                         "Tải Tệp Về Máy",
-                        color_scheme="blue",
+                        background="linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)",
+                        color="white",
+                        size="3",
+                        border_radius="xl",
+                        box_shadow="0 4px 12px rgba(37, 99, 235, 0.35)",
+                        _hover={"transform": "translateY(-1px)", "box_shadow": "0 6px 16px rgba(37, 99, 235, 0.45)"},
                         on_click=GlobalDocState.download_active_doc,
                     ),
                     spacing="3",
                     width="100%",
                     margin_top="3",
                 ),
-                spacing="3",
+                spacing="4",
                 width="100%",
             ),
-            max_width="650px",
-            border_radius="xl",
+            max_width="660px",
+            border_radius="2xl",
+            padding="6",
         ),
         open=GlobalDocState.detail_modal_open,
     )
@@ -545,23 +652,26 @@ def student_documents_page() -> rx.Component:
         version_history_modal(),
         audit_log_modal(),
 
-        # Thanh Tìm kiếm & Lọc Tag
+        # Thanh Tìm kiếm & Lọc Tag Hiện Đại
         rx.card(
             rx.vstack(
                 rx.hstack(
                     rx.input(
-                        rx.input.slot(rx.icon("search", size=16, color="var(--slate-8)")),
-                        placeholder="Tìm kiếm tài liệu theo tiêu đề, môn học (Java, CSDL, Kinh tế vi mô...)...",
+                        rx.input.slot(rx.icon("search", size=18, color="var(--blue-9)")),
+                        placeholder="Tìm kiếm tài liệu theo tiêu đề, môn học (Java, CSDL, Kinh tế vi mô, Web, Python...)...",
                         value=GlobalDocState.search_query,
                         on_change=GlobalDocState.set_search_query,
                         size="3",
                         flex="1",
+                        border_radius="xl",
+                        background="var(--slate-2)",
                     ),
                     rx.button(
                         rx.icon("x", size=15),
                         "Xóa bộ lọc",
                         variant="surface",
                         color_scheme="gray",
+                        border_radius="xl",
                         on_click=GlobalDocState.select_tree_filter("RESET", ""),
                     ),
                     align="center",
@@ -570,14 +680,21 @@ def student_documents_page() -> rx.Component:
                 ),
                 # Tag Bar
                 rx.hstack(
-                    rx.text("Tags gợi ý:", size="1", weight="bold", color="slate.10"),
+                    rx.hstack(
+                        rx.icon("tags", size=14, color="var(--blue-10)"),
+                        rx.text("Tags gợi ý:", size="1", weight="bold", color="slate.10"),
+                        align="center",
+                        spacing="1",
+                    ),
                     *[
                         rx.badge(
                             f"#{t}",
                             color_scheme=rx.cond(GlobalDocState.selected_tag == t, "blue", "gray"),
                             variant=rx.cond(GlobalDocState.selected_tag == t, "solid", "surface"),
+                            radius="full",
                             cursor="pointer",
                             on_click=GlobalDocState.filter_by_tag(t),
+                            padding_x="2.5",
                         )
                         for t in ["ctdl", "python", "web", "reflex", "csdl", "sql", "lab", "btl", "lop-a", "lop-b"]
                     ],
@@ -585,10 +702,14 @@ def student_documents_page() -> rx.Component:
                     align="center",
                     spacing="2",
                 ),
-                spacing="3",
+                spacing="4",
                 width="100%",
             ),
-            padding="4",
+            padding="5",
+            border_radius="2xl",
+            border="1px solid var(--slate-4)",
+            background="white",
+            box_shadow="0 2px 10px rgba(0, 0, 0, 0.03)",
             width="100%",
         ),
 
@@ -646,7 +767,7 @@ def student_documents_page() -> rx.Component:
                     GlobalDocState.public_documents.length() > 0,
                     rx.grid(
                         rx.foreach(
-                            GlobalDocState.public_documents,
+                            GlobalDocState.public_documents.to(list[DocumentCardData]),
                             document_card,
                         ),
                         columns="2",

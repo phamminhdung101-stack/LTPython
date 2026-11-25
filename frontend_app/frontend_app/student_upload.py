@@ -453,21 +453,30 @@ def form_label(text: str, required: bool = True) -> rx.Component:
 
 
 def section_card(title: str, icon: str, *children, **props) -> rx.Component:
-    return rx.card(
+    return rx.box(
         rx.vstack(
             rx.hstack(
-                rx.icon(icon, size=18, color="var(--blue-10)"),
+                rx.box(
+                    rx.icon(icon, size=18, color="#2563eb"),
+                    background="rgba(37, 99, 235, 0.1)",
+                    padding="2",
+                    border_radius="lg",
+                ),
                 rx.text(title, size="3", weight="bold", color="slate.12"),
                 align="center",
                 spacing="2",
-                margin_bottom="4",
+                margin_bottom="3",
             ),
             *children,
             spacing="4",
             width="100%",
         ),
-        variant="surface",
+        background="white",
+        border="1px solid rgba(226, 232, 240, 0.9)",
+        box_shadow="0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.03)",
+        border_radius="2xl",
         padding="5",
+        width="100%",
         **props,
     )
 
@@ -480,13 +489,13 @@ def tag_chip(tag: str) -> rx.Component:
             size=12,
             cursor="pointer",
             on_click=UploadState.remove_tag(tag),
-            color="var(--blue-9)",
+            color="#2563eb",
         ),
-        bg="var(--blue-3)",
-        color="var(--blue-11)",
-        border="1px solid var(--blue-5)",
+        bg="rgba(37, 99, 235, 0.1)",
+        color="#1d4ed8",
+        border="1px solid rgba(37, 99, 235, 0.2)",
         border_radius="full",
-        padding_x="2.5",
+        padding_x="3",
         padding_y="1",
         align="center",
         spacing="2",
@@ -498,24 +507,40 @@ def upload_zone() -> rx.Component:
         rx.upload(
             rx.box(
                 rx.vstack(
-                    rx.icon("cloud-upload", size=36, color="var(--blue-8)"),
-                    rx.text("Kéo & thả tệp vào đây hoặc", size="2", weight="bold", color="slate.11"),
+                    rx.box(
+                        rx.icon("cloud-upload", size=38, color="#2563eb"),
+                        background="rgba(37, 99, 235, 0.12)",
+                        padding="3.5",
+                        border_radius="full",
+                        box_shadow="0 4px 12px rgba(37, 99, 235, 0.15)",
+                    ),
+                    rx.text("Kéo & thả tệp vào đây hoặc duyệt từ máy tính", size="3", weight="bold", color="slate.12"),
                     rx.button(
                         rx.icon("folder-open", size=15),
                         "Chọn tệp từ máy tính",
                         size="2",
                         variant="surface",
                         color_scheme="blue",
+                        border_radius="lg",
                     ),
-                    rx.text("Hỗ trợ: PDF, DOCX, PPTX, XLSX, ZIP (≤ 50 MB)", size="1", color="slate.8"),
-                    spacing="2",
+                    rx.hstack(
+                        rx.badge("PDF", variant="surface", color_scheme="red", size="1"),
+                        rx.badge("PPTX", variant="surface", color_scheme="orange", size="1"),
+                        rx.badge("DOCX", variant="surface", color_scheme="blue", size="1"),
+                        rx.badge("XLSX", variant="surface", color_scheme="green", size="1"),
+                        rx.badge("ZIP", variant="surface", color_scheme="purple", size="1"),
+                        rx.text("• Tối đa 50 MB", size="1", color="slate.9"),
+                        spacing="2",
+                        align="center",
+                    ),
+                    spacing="3",
                     align="center",
                 ),
-                border="2px dashed var(--blue-6)",
-                border_radius="xl",
+                border="2px dashed rgba(59, 130, 246, 0.4)",
+                border_radius="2xl",
                 padding="8",
-                bg="var(--blue-1)",
-                _hover={"border_color": "var(--blue-8)", "bg": "var(--blue-2)"},
+                background="linear-gradient(135deg, rgba(239, 246, 255, 0.5) 0%, rgba(245, 243, 255, 0.5) 100%)",
+                _hover={"border_color": "#2563eb", "background": "rgba(239, 246, 255, 0.8)", "transform": "translateY(-1px)"},
                 transition="all 0.2s ease",
                 width="100%",
                 cursor="pointer",
@@ -534,48 +559,58 @@ def upload_zone() -> rx.Component:
         # Danh sách tệp người dùng chọn từ máy tính
         rx.foreach(
             rx.selected_files("doc_upload"),
-            lambda f: rx.card(
+            lambda f: rx.box(
                 rx.hstack(
-                    rx.icon("file-check", size=18, color="var(--green-10)"),
+                    rx.box(
+                        rx.icon("file-check", size=18, color="#16a34a"),
+                        background="rgba(22, 163, 74, 0.12)",
+                        padding="2",
+                        border_radius="lg",
+                    ),
                     rx.vstack(
                         rx.text(f, size="2", weight="bold", color="green.12"),
                         rx.text("Tệp đã sẵn sàng tải lên cùng biểu mẫu", size="1", color="green.10"),
                         spacing="0",
                     ),
                     rx.spacer(),
-                    rx.badge("Đã chọn từ máy", color_scheme="green", variant="solid", size="1"),
+                    rx.badge("Sẵn sàng tải lên", color_scheme="green", variant="solid", size="1", border_radius="full"),
                     align="center",
                     spacing="2",
                     width="100%",
                 ),
-                variant="surface",
-                padding="3",
-                bg="var(--green-2)",
-                border="1px solid var(--green-6)",
+                background="rgba(240, 253, 244, 0.8)",
+                border="1px solid rgba(187, 247, 208, 0.9)",
+                border_radius="xl",
+                padding="3.5",
                 width="100%",
             ),
         ),
         # Nếu có tệp mẫu được chọn sẵn
         rx.cond(
             UploadState.uploaded_filename != "",
-            rx.card(
+            rx.box(
                 rx.hstack(
-                    rx.icon("file-check", size=18, color="var(--blue-10)"),
+                    rx.box(
+                        rx.icon("file-check", size=18, color="#2563eb"),
+                        background="rgba(37, 99, 235, 0.12)",
+                        padding="2",
+                        border_radius="lg",
+                    ),
                     rx.vstack(
                         rx.text(UploadState.uploaded_filename, size="2", weight="bold", color="slate.12"),
                         rx.text("Tệp đính kèm tự động từ dữ liệu mẫu", size="1", color="blue.10"),
                         spacing="0",
                     ),
                     rx.spacer(),
-                    rx.badge("Tệp mẫu", color_scheme="blue", variant="surface", size="1"),
+                    rx.badge("Tệp mẫu", color_scheme="blue", variant="surface", size="1", border_radius="full"),
                     align="center",
                     spacing="2",
                     width="100%",
                 ),
-                variant="surface",
-                padding="3",
-                bg="var(--blue-2)",
-                border="1px solid var(--blue-6)",
+                background="rgba(239, 246, 255, 0.8)",
+                border="1px solid rgba(191, 219, 254, 0.9)",
+                border_radius="xl",
+                padding="3.5",
                 width="100%",
             ),
             rx.fragment(),
@@ -704,427 +739,484 @@ def student_upload_page() -> rx.Component:
                 UploadState.submit_success,
                 success_state(),
                 rx.vstack(
-                # ── Page Header ──
-                rx.vstack(
-                    rx.hstack(
-                        rx.box(
-                            rx.icon("upload", size=28, color="white"),
-                            bg="blue.9",
-                            padding="3",
-                            border_radius="xl",
-                        ),
-                        rx.vstack(
-                            rx.heading("Đóng góp Tài liệu", size="7", weight="bold", color="slate.12"),
-                            rx.text("Chia sẻ tài liệu học tập để giúp đỡ cộng đồng sinh viên", size="3", color="slate.9"),
-                            spacing="1",
-                        ),
-                        align="center",
-                        spacing="3",
-                    ),
-                    rx.divider(color_scheme="gray", margin_y="4"),
-                    width="100%",
-                ),
-
-                # ── Error Banner ──
-                rx.cond(
-                    UploadState.error_message != "",
-                    rx.callout.root(
-                        rx.callout.icon(rx.icon("triangle-alert", size=16)),
-                        rx.callout.text(UploadState.error_message),
-                        color="red",
-                        variant="surface",
-                        width="100%",
-                    ),
-                    rx.fragment(),
-                ),
-
-                # ── 2-column layout ──
-                rx.grid(
-                    # LEFT: Form chính
-                    rx.vstack(
-                        # 1. Upload file
-                        section_card(
-                            "Tải tệp tài liệu lên",
-                            "file-up",
-                            upload_zone(),
-                        ),
-
-                        # 2. Thông tin tài liệu
-                        section_card(
-                            "Thông tin tài liệu",
-                            "file-text",
-                            # Title
+                    # ── Modern Hero Banner ──
+                    rx.box(
+                        rx.hstack(
+                            rx.box(
+                                rx.icon("cloud-upload", size=32, color="white"),
+                                background="rgba(255, 255, 255, 0.2)",
+                                padding="3",
+                                border_radius="xl",
+                                backdrop_filter="blur(8px)",
+                            ),
                             rx.vstack(
-                                form_label("Tiêu đề tài liệu", required=True),
-                                rx.input(
-                                    placeholder="VD: Slide Chương 3 - Hàng đợi và Ngăn xếp...",
-                                    value=UploadState.title,
-                                    on_change=UploadState.set_title,
+                                rx.heading("Đóng Góp Tài Liệu Học Phần", size="7", weight="bold", color="white"),
+                                rx.text(
+                                    "Chia sẻ đề thi, bài giảng và giáo trình chất lượng cao để chung tay xây dựng kho học liệu số DocUni.",
                                     size="3",
-                                    width="100%",
+                                    color="rgba(255, 255, 255, 0.9)",
                                 ),
-                                spacing="1", width="100%",
+                                spacing="1",
                             ),
-                            # Description
-                            rx.vstack(
-                                rx.hstack(
-                                    form_label("Mô tả nội dung", required=False),
-                                    rx.spacer(),
-                                    rx.text(UploadState.char_count, size="1", color="slate.8"),
-                                    width="100%",
-                                ),
-                                rx.text_area(
-                                    placeholder="Mô tả ngắn gọn nội dung tài liệu, phù hợp với chủ đề nào, tuần mấy...",
-                                    value=UploadState.description,
-                                    on_change=UploadState.set_description,
-                                    resize="vertical",
-                                    rows="3",
-                                    width="100%",
-                                ),
-                                spacing="1", width="100%",
+                            rx.spacer(),
+                            rx.button(
+                                rx.icon("sparkles", size=15),
+                                "Điền Thử Dữ Liệu Mẫu",
+                                on_click=UploadState.quick_fill_sample,
+                                background="rgba(255, 255, 255, 0.2)",
+                                color="white",
+                                border="1px solid rgba(255, 255, 255, 0.4)",
+                                backdrop_filter="blur(8px)",
+                                border_radius="xl",
+                                _hover={"background": "rgba(255, 255, 255, 0.3)"},
                             ),
-                            # Doc type
-                            rx.vstack(
-                                form_label("Loại tài liệu", required=True),
-                                rx.grid(
-                                    rx.foreach(
-                                        DOC_TYPES,
-                                        lambda dt: rx.box(
-                                            rx.hstack(
-                                                rx.icon(dt["icon"], size=14),
-                                                rx.text(dt["label"], size="1", weight="medium"),
-                                                align="center",
-                                                spacing="2",
-                                            ),
-                                            on_click=UploadState.set_doc_type(dt["value"]),
-                                            border=rx.cond(
-                                                UploadState.doc_type == dt["value"],
-                                                "2px solid var(--blue-8)",
-                                                "1px solid var(--slate-5)"
-                                            ),
-                                            border_radius="lg",
-                                            padding="2.5",
-                                            bg=rx.cond(
-                                                UploadState.doc_type == dt["value"],
-                                                "var(--blue-3)",
-                                                "white"
-                                            ),
-                                            cursor="pointer",
-                                            _hover={"border_color": "var(--blue-6)"},
-                                            transition="all 0.15s",
-                                        ),
-                                    ),
-                                    columns="3",
-                                    spacing="2",
-                                    width="100%",
-                                ),
-                                spacing="2", width="100%",
-                            ),
+                            align="center",
+                            width="100%",
                         ),
+                        background="linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #6366f1 100%)",
+                        box_shadow="0 10px 25px -5px rgba(37, 99, 235, 0.35)",
+                        border_radius="2xl",
+                        padding="6",
+                        width="100%",
+                        margin_bottom="2",
+                    ),
 
-                        # 3. Phân loại
-                        section_card(
-                            "Phân loại & Thư mục lưu trữ",
-                            "folder-tree",
-                            # Dept
-                            rx.vstack(
-                                form_label("Khoa / Ngành", required=True),
-                                rx.select.root(
-                                    rx.select.trigger(placeholder="-- Chọn Khoa --", width="100%"),
-                                    rx.select.content(
-                                        rx.foreach(
-                                            UploadState.dept_options,
-                                            lambda d: rx.select.item(d["name"], value=d["id"]),
-                                        ),
-                                    ),
-                                    value=UploadState.selected_dept_id,
-                                    on_change=UploadState.set_dept,
-                                    width="100%",
-                                ),
-                                spacing="1", width="100%",
-                            ),
-                            # Subject
-                            rx.vstack(
-                                form_label("Môn học", required=True),
-                                rx.select.root(
-                                    rx.select.trigger(placeholder="-- Chọn Môn học --", width="100%"),
-                                    rx.select.content(
-                                        rx.foreach(
-                                            UploadState.available_subjects,
-                                            lambda s: rx.select.item(s["name"], value=s["id"]),
-                                        ),
-                                    ),
-                                    value=UploadState.selected_subject_id,
-                                    on_change=UploadState.set_subject,
-                                    disabled=UploadState.selected_dept_id == "",
-                                    width="100%",
-                                ),
-                                rx.cond(
-                                    UploadState.selected_dept_id == "",
-                                    rx.text("Vui lòng chọn Khoa trước", size="1", color="slate.8"),
-                                    rx.fragment(),
-                                ),
-                                spacing="1", width="100%",
-                            ),
-                            # Folder
-                            rx.vstack(
-                                form_label("Thư mục lưu trữ", required=True),
-                                folder_selector(),
-                                spacing="1", width="100%",
-                            ),
+                    # ── Error Banner ──
+                    rx.cond(
+                        UploadState.error_message != "",
+                        rx.callout.root(
+                            rx.callout.icon(rx.icon("triangle-alert", size=16)),
+                            rx.callout.text(UploadState.error_message),
+                            color="red",
+                            variant="surface",
+                            width="100%",
                         ),
+                        rx.fragment(),
+                    ),
 
-                        # 4. Tags
-                        section_card(
-                            "Nhãn & Từ khóa (Tags)",
-                            "tag",
-                            rx.vstack(
-                                # Input add tag
-                                rx.hstack(
+                    # ── 2-column layout ──
+                    rx.grid(
+                        # LEFT: Form chính
+                        rx.vstack(
+                            # 1. Upload file
+                            section_card(
+                                "Tải tệp tài liệu lên",
+                                "file-up",
+                                upload_zone(),
+                            ),
+
+                            # 2. Thông tin tài liệu
+                            section_card(
+                                "Thông tin tài liệu",
+                                "file-text",
+                                # Title
+                                rx.vstack(
+                                    form_label("Tiêu đề tài liệu", required=True),
                                     rx.input(
-                                        placeholder="Nhập từ khóa và nhấn Enter...",
-                                        value=UploadState.tag_input,
-                                        on_change=UploadState.set_tag_input,
-                                        on_key_down=lambda key: rx.cond(
-                                            key == "Enter",
-                                            UploadState.add_tag(),
-                                            rx.noop(),
-                                        ),
-                                        size="2",
-                                        flex="1",
-                                    ),
-                                    rx.button(
-                                        rx.icon("plus", size=14),
-                                        "Thêm",
-                                        size="2",
-                                        variant="surface",
-                                        color_scheme="blue",
-                                        on_click=UploadState.add_tag,
-                                    ),
-                                    spacing="2",
-                                    width="100%",
-                                ),
-                                # Selected tags
-                                rx.cond(
-                                    UploadState.tags.length() > 0,
-                                    rx.flex(
-                                        rx.foreach(UploadState.tags, tag_chip),
-                                        flex_wrap="wrap",
-                                        gap="2",
+                                        placeholder="VD: Slide Chương 3 - Hàng đợi và Ngăn xếp...",
+                                        value=UploadState.title,
+                                        on_change=UploadState.set_title,
+                                        size="3",
                                         width="100%",
                                     ),
-                                    rx.fragment(),
+                                    spacing="1", width="100%",
                                 ),
-                                # Suggested tags
+                                # Description
                                 rx.vstack(
-                                    rx.text("Gợi ý từ khóa phổ biến:", size="1", color="slate.9", weight="medium"),
-                                    rx.flex(
-                                        *[
-                                            rx.badge(
-                                                f"+ {t}",
-                                                variant="surface",
-                                                color_scheme="blue",
-                                                size="2",
+                                    rx.hstack(
+                                        form_label("Mô tả nội dung", required=False),
+                                        rx.spacer(),
+                                        rx.text(UploadState.char_count, size="1", color="slate.8"),
+                                        width="100%",
+                                    ),
+                                    rx.text_area(
+                                        placeholder="Mô tả ngắn gọn nội dung tài liệu, phù hợp với chủ đề nào, tuần mấy...",
+                                        value=UploadState.description,
+                                        on_change=UploadState.set_description,
+                                        resize="vertical",
+                                        rows="3",
+                                        width="100%",
+                                    ),
+                                    spacing="1", width="100%",
+                                ),
+                                # Doc type
+                                rx.vstack(
+                                    form_label("Loại tài liệu", required=True),
+                                    rx.grid(
+                                        rx.foreach(
+                                            DOC_TYPES,
+                                            lambda dt: rx.box(
+                                                rx.hstack(
+                                                    rx.icon(dt["icon"], size=14),
+                                                    rx.text(dt["label"], size="1", weight="medium"),
+                                                    align="center",
+                                                    spacing="2",
+                                                ),
+                                                on_click=UploadState.set_doc_type(dt["value"]),
+                                                border=rx.cond(
+                                                    UploadState.doc_type == dt["value"],
+                                                    "2px solid #2563eb",
+                                                    "1px solid var(--slate-5)"
+                                                ),
+                                                border_radius="lg",
+                                                padding="2.5",
+                                                bg=rx.cond(
+                                                    UploadState.doc_type == dt["value"],
+                                                    "rgba(37, 99, 235, 0.08)",
+                                                    "white"
+                                                ),
                                                 cursor="pointer",
-                                                _hover={"color_scheme": "indigo", "cursor": "pointer"},
-                                                on_click=UploadState.add_suggested_tag(t),
-                                            )
-                                            for t in SUGGESTED_TAGS[:8]
-                                        ],
-                                        flex_wrap="wrap",
-                                        gap="2",
-                                    ),
-                                    spacing="2",
-                                    width="100%",
-                                ),
-                                spacing="3",
-                                width="100%",
-                            ),
-                        ),
-
-                        # 5. Visibility + Submit
-                        section_card(
-                            "Cài đặt quyền truy cập",
-                            "lock",
-                            rx.hstack(
-                                rx.icon(
-                                    rx.cond(UploadState.is_public, "globe", "lock"),
-                                    size=20,
-                                    color=rx.cond(UploadState.is_public, "var(--green-10)", "var(--amber-10)"),
-                                ),
-                                rx.vstack(
-                                    rx.text(
-                                        rx.cond(UploadState.is_public, "Công khai cho tất cả sinh viên", "Chỉ sinh viên được phân quyền"),
-                                        size="2", weight="bold", color="slate.12",
-                                    ),
-                                    rx.text(
-                                        rx.cond(UploadState.is_public, "Mọi sinh viên trong hệ thống có thể xem và tải.", "Chỉ sinh viên trong lớp/khoa được phép truy cập."),
-                                        size="1", color="slate.9",
-                                    ),
-                                    spacing="0",
-                                ),
-                                rx.spacer(),
-                                rx.switch(
-                                    checked=UploadState.is_public,
-                                    on_change=UploadState.toggle_public,
-                                    color_scheme="green",
-                                ),
-                                align="center",
-                                spacing="3",
-                                width="100%",
-                            ),
-                        ),
-
-                        # Submit button
-                        rx.button(
-                            rx.cond(
-                                UploadState.is_submitting,
-                                rx.spinner(size="3"),
-                                rx.icon("send", size=18),
-                            ),
-                            rx.cond(
-                                UploadState.is_submitting,
-                                "Đang gửi...",
-                                "Gửi yêu cầu đóng góp (Nộp vào hàng đợi duyệt)",
-                            ),
-                            size="4",
-                            width="100%",
-                            color_scheme="blue",
-                            variant="solid",
-                            loading=UploadState.is_submitting,
-                            on_click=UploadState.submit_contribution(rx.upload_files(upload_id="doc_upload")),
-                        ),
-
-                        spacing="4",
-                        width="100%",
-                    ),
-
-                    # RIGHT: Hướng dẫn
-                    rx.vstack(
-                        # Checklist quy định
-                        rx.card(
-                            rx.vstack(
-                                rx.hstack(
-                                    rx.icon("info", size=18, color="var(--blue-10)"),
-                                    rx.text("Quy định đóng góp tài liệu", size="3", weight="bold", color="slate.12"),
-                                    align="center",
-                                    spacing="2",
-                                ),
-                                rx.vstack(
-                                    *[
-                                        rx.hstack(
-                                            rx.icon("circle-check", size=15, color="var(--green-9)"),
-                                            rx.text(t, size="2", color="slate.11"),
-                                            align="center",
-                                            spacing="2",
-                                        )
-                                        for t in [
-                                            "Tài liệu phải đúng môn học được chọn",
-                                            "Tiêu đề rõ ràng, phản ánh đúng nội dung",
-                                            "Không chứa nội dung bản quyền trái phép",
-                                            "File phải rõ ràng, chất lượng tốt",
-                                            "Kích thước tệp ≤ 50 MB",
-                                            "Hỗ trợ định dạng: PDF, DOCX, PPTX, XLSX, ZIP",
-                                        ]
-                                    ],
-                                    spacing="2",
-                                ),
-                                spacing="4",
-                            ),
-                            variant="surface",
-                            padding="5",
-                        ),
-
-                        # Tiêu chí kiểm duyệt
-                        rx.card(
-                            rx.vstack(
-                                rx.hstack(
-                                    rx.icon("shield-check", size=18, color="var(--indigo-10)"),
-                                    rx.text("Tiêu chí kiểm duyệt", size="3", weight="bold", color="slate.12"),
-                                    align="center",
-                                    spacing="2",
-                                ),
-                                rx.grid(
-                                    *[
-                                        rx.box(
-                                            rx.vstack(
-                                                rx.icon(item[0], size=20, color=item[2]),
-                                                rx.text(item[1], size="1", weight="bold", color="slate.12", text_align="center"),
-                                                rx.text(item[3], size="1", color="slate.9", text_align="center"),
-                                                spacing="1",
-                                                align="center",
+                                                _hover={"border_color": "#2563eb"},
+                                                transition="all 0.15s",
                                             ),
-                                            bg="var(--slate-2)",
-                                            border_radius="lg",
-                                            padding="3",
-                                        )
-                                        for item in [
-                                            ("file-search", "Nội dung", "var(--blue-9)", "Phù hợp và học thuật"),
-                                            ("copyright", "Bản quyền", "var(--amber-9)", "Hợp pháp"),
-                                            ("award", "Chất lượng", "var(--green-9)", "Rõ ràng, đầy đủ"),
-                                            ("tag", "Phân loại", "var(--purple-9)", "Đúng môn, đúng loại"),
-                                        ]
-                                    ],
-                                    columns="2",
+                                        ),
+                                        columns="3",
+                                        spacing="2",
+                                        width="100%",
+                                    ),
+                                    spacing="2", width="100%",
+                                ),
+                            ),
+
+                            # 3. Phân loại
+                            section_card(
+                                "Phân loại & Thư mục lưu trữ",
+                                "folder-tree",
+                                # Dept
+                                rx.vstack(
+                                    form_label("Khoa / Ngành", required=True),
+                                    rx.select.root(
+                                        rx.select.trigger(placeholder="-- Chọn Khoa --", width="100%"),
+                                        rx.select.content(
+                                            rx.foreach(
+                                                UploadState.dept_options,
+                                                lambda d: rx.select.item(d["name"], value=d["id"]),
+                                            ),
+                                        ),
+                                        value=UploadState.selected_dept_id,
+                                        on_change=UploadState.set_dept,
+                                        width="100%",
+                                    ),
+                                    spacing="1", width="100%",
+                                ),
+                                # Subject
+                                rx.vstack(
+                                    form_label("Môn học", required=True),
+                                    rx.select.root(
+                                        rx.select.trigger(placeholder="-- Chọn Môn học --", width="100%"),
+                                        rx.select.content(
+                                            rx.foreach(
+                                                UploadState.available_subjects,
+                                                lambda s: rx.select.item(s["name"], value=s["id"]),
+                                            ),
+                                        ),
+                                        value=UploadState.selected_subject_id,
+                                        on_change=UploadState.set_subject,
+                                        disabled=UploadState.selected_dept_id == "",
+                                        width="100%",
+                                    ),
+                                    rx.cond(
+                                        UploadState.selected_dept_id == "",
+                                        rx.text("Vui lòng chọn Khoa trước", size="1", color="slate.8"),
+                                        rx.fragment(),
+                                    ),
+                                    spacing="1", width="100%",
+                                ),
+                                # Folder
+                                rx.vstack(
+                                    form_label("Thư mục lưu trữ", required=True),
+                                    folder_selector(),
+                                    spacing="1", width="100%",
+                                ),
+                            ),
+
+                            # 4. Tags
+                            section_card(
+                                "Nhãn & Từ khóa (Tags)",
+                                "tag",
+                                rx.vstack(
+                                    # Input add tag
+                                    rx.hstack(
+                                        rx.input(
+                                            placeholder="Nhập từ khóa và nhấn Enter...",
+                                            value=UploadState.tag_input,
+                                            on_change=UploadState.set_tag_input,
+                                            on_key_down=lambda key: rx.cond(
+                                                key == "Enter",
+                                                UploadState.add_tag(),
+                                                rx.noop(),
+                                            ),
+                                            size="2",
+                                            flex="1",
+                                        ),
+                                        rx.button(
+                                            rx.icon("plus", size=14),
+                                            "Thêm",
+                                            size="2",
+                                            variant="surface",
+                                            color_scheme="blue",
+                                            on_click=UploadState.add_tag,
+                                        ),
+                                        spacing="2",
+                                        width="100%",
+                                    ),
+                                    # Selected tags
+                                    rx.cond(
+                                        UploadState.tags.length() > 0,
+                                        rx.flex(
+                                            rx.foreach(UploadState.tags, tag_chip),
+                                            flex_wrap="wrap",
+                                            gap="2",
+                                            width="100%",
+                                        ),
+                                        rx.fragment(),
+                                    ),
+                                    # Suggested tags
+                                    rx.vstack(
+                                        rx.text("Gợi ý từ khóa phổ biến:", size="1", color="slate.9", weight="medium"),
+                                        rx.flex(
+                                            *[
+                                                rx.badge(
+                                                    f"+ {t}",
+                                                    variant="surface",
+                                                    color_scheme="blue",
+                                                    size="2",
+                                                    cursor="pointer",
+                                                    _hover={"color_scheme": "indigo", "cursor": "pointer"},
+                                                    on_click=UploadState.add_suggested_tag(t),
+                                                )
+                                                for t in SUGGESTED_TAGS[:8]
+                                            ],
+                                            flex_wrap="wrap",
+                                            gap="2",
+                                        ),
+                                        spacing="2",
+                                        width="100%",
+                                    ),
                                     spacing="3",
                                     width="100%",
                                 ),
-                                spacing="4",
                             ),
-                            variant="surface",
-                            padding="5",
+
+                            # 5. Visibility + Submit
+                            section_card(
+                                "Cài đặt quyền truy cập",
+                                "lock",
+                                rx.hstack(
+                                    rx.box(
+                                        rx.icon(
+                                            rx.cond(UploadState.is_public, "globe", "lock"),
+                                            size=20,
+                                            color=rx.cond(UploadState.is_public, "#16a34a", "#d97706"),
+                                        ),
+                                        background=rx.cond(UploadState.is_public, "rgba(22, 163, 74, 0.12)", "rgba(217, 119, 6, 0.12)"),
+                                        padding="2.5",
+                                        border_radius="lg",
+                                    ),
+                                    rx.vstack(
+                                        rx.text(
+                                            rx.cond(UploadState.is_public, "Công khai cho tất cả sinh viên", "Chỉ sinh viên được phân quyền"),
+                                            size="2", weight="bold", color="slate.12",
+                                        ),
+                                        rx.text(
+                                            rx.cond(UploadState.is_public, "Mọi sinh viên trong hệ thống có thể xem và tải.", "Chỉ sinh viên trong lớp/khoa được phép truy cập."),
+                                            size="1", color="slate.9",
+                                        ),
+                                        spacing="0",
+                                    ),
+                                    rx.spacer(),
+                                    rx.switch(
+                                        checked=UploadState.is_public,
+                                        on_change=UploadState.toggle_public,
+                                        color_scheme="green",
+                                    ),
+                                    align="center",
+                                    spacing="3",
+                                    width="100%",
+                                ),
+                            ),
+
+                            # Submit button
+                            rx.button(
+                                rx.cond(
+                                    UploadState.is_submitting,
+                                    rx.spinner(size="3"),
+                                    rx.icon("send", size=18),
+                                ),
+                                rx.cond(
+                                    UploadState.is_submitting,
+                                    "Đang gửi...",
+                                    "Gửi Yêu Cầu Đóng Góp (Nộp Vào Hàng Đợi Duyệt)",
+                                ),
+                                size="4",
+                                width="100%",
+                                background="linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)",
+                                color="white",
+                                border_radius="xl",
+                                box_shadow="0 6px 20px rgba(37, 99, 235, 0.35)",
+                                _hover={"transform": "translateY(-1px)", "box_shadow": "0 8px 25px rgba(37, 99, 235, 0.45)"},
+                                loading=UploadState.is_submitting,
+                                on_click=UploadState.submit_contribution(rx.upload_files(upload_id="doc_upload")),
+                            ),
+
+                            spacing="4",
+                            width="100%",
                         ),
 
-                        # Trạng thái quy trình
-                        rx.card(
-                            rx.vstack(
-                                rx.hstack(
-                                    rx.icon("milestone", size=18, color="var(--violet-10)"),
-                                    rx.text("Quy trình duyệt tài liệu", size="3", weight="bold", color="slate.12"),
-                                    align="center",
-                                    spacing="2",
-                                ),
-                                *[
+                        # RIGHT: Hướng dẫn
+                        rx.vstack(
+                            # Checklist quy định
+                            rx.box(
+                                rx.vstack(
                                     rx.hstack(
                                         rx.box(
-                                            rx.text(str(n), size="1", weight="bold", color="white"),
-                                            bg=f"var(--{c}-9)",
-                                            width="24px",
-                                            height="24px",
-                                            border_radius="full",
-                                            display="flex",
-                                            align_items="center",
-                                            justify_content="center",
-                                            flex_shrink="0",
+                                            rx.icon("info", size=18, color="#2563eb"),
+                                            background="rgba(37, 99, 235, 0.1)",
+                                            padding="2",
+                                            border_radius="lg",
                                         ),
-                                        rx.vstack(
-                                            rx.text(title, size="2", weight="bold", color="slate.12"),
-                                            rx.text(desc, size="1", color="slate.9"),
-                                            spacing="0",
-                                        ),
-                                        align="start",
+                                        rx.text("Quy định đóng góp tài liệu", size="3", weight="bold", color="slate.12"),
+                                        align="center",
+                                        spacing="2",
+                                    ),
+                                    rx.vstack(
+                                        *[
+                                            rx.hstack(
+                                                rx.icon("circle-check", size=15, color="#16a34a"),
+                                                rx.text(t, size="2", color="slate.11"),
+                                                align="center",
+                                                spacing="2",
+                                            )
+                                            for t in [
+                                                "Tài liệu phải đúng môn học được chọn",
+                                                "Tiêu đề rõ ràng, phản ánh đúng nội dung",
+                                                "Không chứa nội dung bản quyền trái phép",
+                                                "File phải rõ ràng, chất lượng tốt",
+                                                "Kích thước tệp ≤ 50 MB",
+                                                "Hỗ trợ định dạng: PDF, DOCX, PPTX, XLSX, ZIP",
+                                            ]
+                                        ],
                                         spacing="3",
-                                    )
-                                    for n, c, title, desc in [
-                                        (1, "blue", "Nộp tài liệu", "Điền thông tin và upload tệp"),
-                                        (2, "amber", "Chờ kiểm duyệt", "Giảng viên xem xét trong 1-3 ngày"),
-                                        (3, "green", "Được duyệt", "Tài liệu xuất hiện trong kho học liệu"),
-                                    ]
-                                ],
-                                spacing="3",
+                                    ),
+                                    spacing="4",
+                                ),
+                                background="white",
+                                border="1px solid rgba(226, 232, 240, 0.9)",
+                                border_radius="2xl",
+                                box_shadow="0 1px 3px rgba(0, 0, 0, 0.05)",
+                                padding="5",
+                                width="100%",
                             ),
-                            variant="surface",
-                            padding="5",
+
+                            # Tiêu chí kiểm duyệt
+                            rx.box(
+                                rx.vstack(
+                                    rx.hstack(
+                                        rx.box(
+                                            rx.icon("shield-check", size=18, color="#4f46e5"),
+                                            background="rgba(79, 70, 229, 0.1)",
+                                            padding="2",
+                                            border_radius="lg",
+                                        ),
+                                        rx.text("Tiêu chí kiểm duyệt", size="3", weight="bold", color="slate.12"),
+                                        align="center",
+                                        spacing="2",
+                                    ),
+                                    rx.grid(
+                                        *[
+                                            rx.box(
+                                                rx.vstack(
+                                                    rx.icon(item[0], size=20, color=item[2]),
+                                                    rx.text(item[1], size="1", weight="bold", color="slate.12", text_align="center"),
+                                                    rx.text(item[3], size="1", color="slate.9", text_align="center"),
+                                                    spacing="1",
+                                                    align="center",
+                                                ),
+                                                bg="rgba(248, 250, 252, 0.8)",
+                                                border="1px solid rgba(226, 232, 240, 0.8)",
+                                                border_radius="xl",
+                                                padding="3",
+                                            )
+                                            for item in [
+                                                ("file-search", "Nội dung", "#2563eb", "Phù hợp và học thuật"),
+                                                ("copyright", "Bản quyền", "#d97706", "Hợp pháp"),
+                                                ("award", "Chất lượng", "#16a34a", "Rõ ràng, đầy đủ"),
+                                                ("tag", "Phân loại", "#9333ea", "Đúng môn, đúng loại"),
+                                            ]
+                                        ],
+                                        columns="2",
+                                        spacing="3",
+                                        width="100%",
+                                    ),
+                                    spacing="4",
+                                ),
+                                background="white",
+                                border="1px solid rgba(226, 232, 240, 0.9)",
+                                border_radius="2xl",
+                                box_shadow="0 1px 3px rgba(0, 0, 0, 0.05)",
+                                padding="5",
+                                width="100%",
+                            ),
+
+                            # Trạng thái quy trình
+                            rx.box(
+                                rx.vstack(
+                                    rx.hstack(
+                                        rx.box(
+                                            rx.icon("milestone", size=18, color="#7c3aed"),
+                                            background="rgba(124, 58, 237, 0.1)",
+                                            padding="2",
+                                            border_radius="lg",
+                                        ),
+                                        rx.text("Quy trình duyệt tài liệu", size="3", weight="bold", color="slate.12"),
+                                        align="center",
+                                        spacing="2",
+                                    ),
+                                    *[
+                                        rx.hstack(
+                                            rx.box(
+                                                rx.text(str(n), size="1", weight="bold", color="white"),
+                                                bg=f"var(--{c}-9)",
+                                                width="24px",
+                                                height="24px",
+                                                border_radius="full",
+                                                display="flex",
+                                                align_items="center",
+                                                justify_content="center",
+                                                flex_shrink="0",
+                                            ),
+                                            rx.vstack(
+                                                rx.text(title, size="2", weight="bold", color="slate.12"),
+                                                rx.text(desc, size="1", color="slate.9"),
+                                                spacing="0",
+                                            ),
+                                            align="start",
+                                            spacing="3",
+                                        )
+                                        for n, c, title, desc in [
+                                            (1, "blue", "Nộp tài liệu", "Điền thông tin và upload tệp"),
+                                            (2, "amber", "Chờ kiểm duyệt", "Giảng viên xem xét trong 1-3 ngày"),
+                                            (3, "green", "Được duyệt", "Tài liệu xuất hiện trong kho học liệu"),
+                                        ]
+                                    ],
+                                    spacing="4",
+                                ),
+                                background="white",
+                                border="1px solid rgba(226, 232, 240, 0.9)",
+                                border_radius="2xl",
+                                box_shadow="0 1px 3px rgba(0, 0, 0, 0.05)",
+                                padding="5",
+                                width="100%",
+                            ),
+
+                            spacing="4",
+                            width="100%",
                         ),
 
-                        spacing="4",
+                        columns="5fr 3fr",
+                        spacing="6",
                         width="100%",
                     ),
-
-                    columns="5fr 3fr",
-                    spacing="6",
-                    width="100%",
-                ),
 
                 spacing="5",
                 width="100%",
