@@ -177,7 +177,8 @@ class VectorSearchService:
         try:
             doc_obj = Document.objects.filter(pk=doc_id).first()
             if doc_obj:
-                return can_user_access_document(user, doc_obj)
+                can_access, _ = can_user_access_document(user, doc_obj)
+                return can_access
         except Exception:
             pass
 

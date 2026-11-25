@@ -54,17 +54,7 @@ INITIAL_AI_MESSAGE = ChatMessage(
     ),
     timestamp="Vừa xong",
     mode="rag",
-    citations=[
-        Citation(
-            id="c0",
-            doc_title="Kho Học Liệu DocUni Hệ Thống",
-            subject_code="DocUni-RAG",
-            page=1,
-            score="100%",
-            snippet="Chỉ mục tìm kiếm ngữ nghĩa đã sẵn sàng với 8 học phần chính: CNTT, Kinh tế, Ngoại ngữ, Điều hành bay.",
-            file_url="/documents",
-        )
-    ],
+    citations=[],
 )
 
 QUICK_PROMPTS = [
@@ -259,28 +249,15 @@ class AIAssistantState(rx.State):
             pass
 
         if not ai_content:
-            # Phản hồi tổng quát thông minh
-            citations = [
-                Citation(
-                    id=f"gen_cite_{len(self.chat_history)}",
-                    doc_title="Kho Giáo trình Tổng hợp DocUni",
-                    subject_code=self.subject_filter if self.subject_filter != "ALL" else "IT/ECO",
-                    page=1,
-                    score="88.6%",
-                    snippet=f"Trích xuất liên quan đến truy vấn '{text[:40]}...': Hệ thống DocUni đã đối soát ngữ nghĩa từ các tài liệu tham khảo chính thức và đề thi môn học.",
-                    file_url="/documents",
-                )
-            ] if self.search_mode == "rag" else []
-
             ai_content = (
-                f"Dựa trên cơ sở dữ liệu học phần và các tài liệu liên quan đến chủ đề **'{text}'**:\n\n"
-                f"1. **Tổng quan khái niệm**: Yêu cầu này liên quan trực tiếp đến nội dung giảng dạy trong chương trình đào tạo của học viện.\n"
-                f"2. **Các điểm cốt lõi cần ghi nhớ**:\n"
-                f"   • Đọc kỹ phần lý thuyết nền tảng trong giáo trình chính thức trước khi giải bài tập trắc nghiệm.\n"
-                f"   • Chú ý các điều kiện ràng buộc biên và các trường hợp ngoại lệ thường xuất hiện trong đề thi các năm trước.\n"
-                f"   • Tham khảo các bài giải mẫu và slide bài giảng được giảng viên phê duyệt trên hệ thống DocUni.\n\n"
-                f"💡 *Gợi ý*: Bạn có thể xem các trích dẫn tài liệu cụ thể bên dưới để mở file học liệu nghiên cứu sâu hơn!"
+                f"Rất tiếc, hệ thống DocUni không tìm thấy thông tin hoặc đoạn trích phù hợp với câu hỏi "
+                f"**'{text}'** trong các tài liệu mà bạn có quyền truy cập.\n\n"
+                f"💡 **Gợi ý tra cứu**:\n"
+                f"• Kiểm tra lại từ khóa hoặc sử dụng các thuật ngữ chuyên ngành chuẩn xác.\n"
+                f"• Đảm bảo học liệu liên quan đã được tải lên và phê duyệt công khai trong kho tài liệu.\n"
+                f"• Liên hệ Giảng viên phụ trách bộ môn nếu bạn cần cấp quyền truy cập tài liệu nội bộ."
             )
+            citations = []
 
         ai_msg = ChatMessage(
             id=f"msg_{len(self.chat_history) + 1}",

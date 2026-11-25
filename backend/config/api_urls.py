@@ -20,9 +20,12 @@ from accounts.api_views import (
 # Academics & Folders
 from academics.api_views import (
     department_api,
+    department_detail_api,
     class_api,
+    class_detail_api,
     class_toggle_lock_api,
     subject_api,
+    subject_detail_api,
     folder_tree_api,
     folder_api,
     folder_detail_api,
@@ -95,9 +98,12 @@ urlpatterns = [
 
     # ── 2. Academics & Organization ──
     path('departments/', department_api, name='api_departments'),
+    path('departments/<int:pk>/', department_detail_api, name='api_department_detail'),
     path('classes/', class_api, name='api_classes'),
+    path('classes/<int:pk>/', class_detail_api, name='api_class_detail'),
     path('classes/<int:pk>/toggle-lock/', class_toggle_lock_api, name='api_class_toggle_lock'),
     path('subjects/', subject_api, name='api_subjects'),
+    path('subjects/<int:pk>/', subject_detail_api, name='api_subject_detail'),
     path('subjects/<int:subject_id>/folders/tree/', folder_tree_api, name='api_folder_tree'),
     path('folders/', folder_api, name='api_folders'),
     path('folders/<int:pk>/', folder_detail_api, name='api_folder_detail'),

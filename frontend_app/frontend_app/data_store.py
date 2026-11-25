@@ -519,39 +519,7 @@ def build_db_folder_tree() -> List[Dict[str, Any]]:
     except Exception:
         pass
 
-    return [
-        {
-            "id": "fac_1",
-            "name": "Cong nghe thong tin",
-            "type": "FACULTY",
-            "code": "Cong nghe thong tin",
-            "children": [
-                {"id": "sub_1", "name": "Lap trinh Java", "type": "SUBJECT", "code": "Lap trinh Java", "children": [{"id": "f_1", "name": "Bai giang", "type": "FOLDER", "code": "Lap trinh Java"}, {"id": "f_2", "name": "Bai tap", "type": "FOLDER", "code": "Lap trinh Java"}, {"id": "f_3", "name": "Tuan 1", "type": "FOLDER", "code": "Lap trinh Java"}, {"id": "f_4", "name": "Tuan 2", "type": "FOLDER", "code": "Lap trinh Java"}]},
-                {"id": "sub_2", "name": "Co so du lieu", "type": "SUBJECT", "code": "Co so du lieu", "children": [{"id": "f_5", "name": "Bai giang", "type": "FOLDER", "code": "Co so du lieu"}, {"id": "f_6", "name": "De thi", "type": "FOLDER", "code": "Co so du lieu"}, {"id": "f_7", "name": "Chuong 1", "type": "FOLDER", "code": "Co so du lieu"}]},
-                {"id": "sub_3", "name": "Mang may tinh", "type": "SUBJECT", "code": "Mang may tinh", "children": [{"id": "f_8", "name": "Bai giang", "type": "FOLDER", "code": "Mang may tinh"}]},
-            ]
-        },
-        {
-            "id": "fac_2",
-            "name": "Kinh te",
-            "type": "FACULTY",
-            "code": "Kinh te",
-            "children": [
-                {"id": "sub_4", "name": "Kinh te vi mo", "type": "SUBJECT", "code": "Kinh te vi mo", "children": [{"id": "f_9", "name": "Bai giang", "type": "FOLDER", "code": "Kinh te vi mo"}, {"id": "f_10", "name": "Bai tap", "type": "FOLDER", "code": "Kinh te vi mo"}]},
-                {"id": "sub_5", "name": "Ke toan dai cuong", "type": "SUBJECT", "code": "Ke toan dai cuong", "children": [{"id": "f_11", "name": "Tai lieu tham khao", "type": "FOLDER", "code": "Ke toan dai cuong"}]},
-            ]
-        },
-        {
-            "id": "fac_3",
-            "name": "Ngoai ngu",
-            "type": "FACULTY",
-            "code": "Ngoai ngu",
-            "children": [
-                {"id": "sub_6", "name": "Tieng Anh chuyen nganh", "type": "SUBJECT", "code": "Tieng Anh chuyen nganh", "children": [{"id": "f_12", "name": "Bai giang", "type": "FOLDER", "code": "Tieng Anh chuyen nganh"}]},
-                {"id": "sub_7", "name": "Ngu phap co ban", "type": "SUBJECT", "code": "Ngu phap co ban", "children": [{"id": "f_13", "name": "Tài liệu chung", "type": "FOLDER", "code": "Ngu phap co ban"}]},
-            ]
-        }
-    ]
+    return []
 
 FOLDER_TREE_DATA: List[Dict[str, Any]] = build_db_folder_tree()
 

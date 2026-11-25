@@ -35,51 +35,22 @@ class ActivityItem:
     color: str = "blue"
 
 
-# ─── Initial Mock Chart Data ─────────────────────────────────────────────────
-
-CHART_DATA_7D = [
-    {"date": "Thứ 2", "views": 420, "downloads": 150},
-    {"date": "Thứ 3", "views": 680, "downloads": 240},
-    {"date": "Thứ 4", "views": 850, "downloads": 310},
-    {"date": "Thứ 5", "views": 1100, "downloads": 480},
-    {"date": "Thứ 6", "views": 980, "downloads": 420},
-    {"date": "Thứ 7", "views": 750, "downloads": 290},
-    {"date": "Chủ nhật", "views": 610, "downloads": 210},
-]
-
-CHART_DATA_30D = [
-    {"date": "Tuần 1", "views": 2400, "downloads": 950},
-    {"date": "Tuần 2", "views": 3100, "downloads": 1280},
-    {"date": "Tuần 3", "views": 3800, "downloads": 1540},
-    {"date": "Tuần 4", "views": 2420, "downloads": 930},
-]
-
-TOP_DOCS_DATA = [
-    {"name": "Lap trinh Java Đề thi", "downloads": 1650},
-    {"name": "Co so du lieu Slide", "downloads": 1240},
-    {"name": "Mang may tinh Bài giảng", "downloads": 890},
-    {"name": "Kinh te vi mo Bài tập", "downloads": 540},
-    {"name": "Ke toan dai cuong Tài liệu", "downloads": 380},
-]
-
-CATEGORY_PIE_DATA = [
-    {"name": "Giáo trình", "value": 35, "fill": "#3b82f6"},
-    {"name": "Slide Bài giảng", "value": 28, "fill": "#f97316"},
-    {"name": "Đề thi & Đáp án", "value": 20, "fill": "#ef4444"},
-    {"name": "Bài tập lớn", "value": 17, "fill": "#a855f7"},
-]
-
 # ─── State ───────────────────────────────────────────────────────────────────
 
 class LecturerDashboardState(rx.State):
-    """Quản lý trạng thái số liệu phân tích và biểu đồ cho giảng viên."""
+    """Quản lý trạng thái số liệu phân tích và biểu đồ cho giảng viên từ PostgreSQL thực tế."""
 
     time_range: str = "7d"  # "7d" hoặc "30d"
     activities: List[ActivityItem] = []
-    total_docs: int = 29
-    total_views: int = 300
-    total_downloads: int = 83
-    pending_count: int = 18
+    total_docs: int = 0
+    total_views: int = 0
+    total_downloads: int = 0
+    pending_count: int = 0
+
+    chart_data_7d: List[Dict[str, Any]] = []
+    chart_data_30d: List[Dict[str, Any]] = []
+    top_docs_data: List[Dict[str, Any]] = []
+    category_pie_data: List[Dict[str, Any]] = []
 
     async def load_data(self):
         try:
@@ -87,15 +58,20 @@ class LecturerDashboardState(rx.State):
             from .auth import AuthState
             auth = await self.get_state(AuthState)
             headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
-            resp = httpx.get("http://127.0.0.1:8000/api/dashboard/stats/", headers=headers, timeout=3.0)
+            resp = httpx.get("http://127.0.0.1:8000/api/dashboard/stats/", headers=headers, timeout=4.0)
             if resp.status_code == 200:
                 data = resp.json()
                 stats = data.get("stats") or data.get("data") or {}
-                self.total_docs = stats.get("total_documents", 29)
-                self.total_views = stats.get("total_views", 300)
-                self.total_downloads = stats.get("total_downloads", 83)
-                self.pending_count = stats.get("pending_documents", 18)
+                self.total_docs = int(stats.get("total_documents", 0))
+                self.total_views = int(stats.get("total_views", 0))
+                self.total_downloads = int(stats.get("total_downloads", 0))
+                self.pending_count = int(stats.get("pending_documents", 0))
                 
+                self.chart_data_7d = data.get("chart_trends_7d") or []
+                self.chart_data_30d = data.get("chart_trends_30d") or []
+                self.top_docs_data = data.get("top_documents") or []
+                self.category_pie_data = data.get("category_breakdown") or []
+
                 raw_acts = data.get("recent_activities") or []
                 loaded_acts = []
                 for act in raw_acts:
@@ -115,6 +91,70 @@ class LecturerDashboardState(rx.State):
         except Exception:
             pass
 
+        # ORM Fallback
+        try:
+            import os, sys, asyncio
+            def _fetch_db_dashboard():
+                backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+                if backend_dir not in sys.path:
+                    sys.path.insert(0, backend_dir)
+                os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+                import django
+                django.setup()
+                from documents.models import Document, DocumentActivityLog, DocumentVersion
+                from django.db.models import Sum
+
+                tot_docs = Document.objects.count()
+                pend_count = Document.objects.filter(status='PENDING').count()
+                tot_views = Document.objects.aggregate(s=Sum('view_count'))['s'] or 0
+                tot_downloads = Document.objects.aggregate(s=Sum('download_count'))['s'] or 0
+
+                # Top docs
+                top_qs = Document.objects.filter(status='APPROVED').order_by('-download_count', '-view_count')[:5]
+                t_docs = [{'name': d.title[:20], 'downloads': d.download_count} for d in top_qs]
+
+                # Category breakdown
+                ext_counts = {}
+                for v in DocumentVersion.objects.all():
+                    ext = os.path.splitext(str(v.file))[1].lower() if v.file else '.pdf'
+                    ext_counts[ext] = ext_counts.get(ext, 0) + 1
+                colors = ["#3b82f6", "#f97316", "#10b981", "#a855f7", "#ef4444"]
+                pie_data = [
+                    {'name': k.upper().replace('.', ''), 'value': v, 'fill': colors[i % len(colors)]}
+                    for i, (k, v) in enumerate(sorted(ext_counts.items(), key=lambda x: x[1], reverse=True)[:5])
+                ]
+
+                # Activities
+                logs = DocumentActivityLog.objects.select_related('user', 'document').order_by('-created_at')[:10]
+                acts = []
+                for l in logs:
+                    u_name = l.user.full_name if (l.user and hasattr(l.user, 'full_name') and l.user.full_name) else (l.user.username if l.user else "Người dùng")
+                    d_title = l.document.title if l.document else "Tài liệu"
+                    acts.append(ActivityItem(
+                        id=str(l.id),
+                        user_name=u_name,
+                        user_role="Cán bộ / Sinh viên",
+                        action=l.action,
+                        target_title=d_title,
+                        subject_code="DocUni",
+                        timestamp=l.created_at.strftime('%Y-%m-%d %H:%M') if l.created_at else "",
+                        icon="file-text",
+                        color="blue",
+                    ))
+                return tot_docs, tot_views, tot_downloads, pend_count, t_docs, pie_data, acts
+
+            (
+                self.total_docs,
+                self.total_views,
+                self.total_downloads,
+                self.pending_count,
+                self.top_docs_data,
+                self.category_pie_data,
+                self.activities,
+            ) = await asyncio.to_thread(_fetch_db_dashboard)
+        except Exception:
+            pass
+
     def set_time_range(self, value: str | list[str]):
         if isinstance(value, list):
             self.time_range = str(value[0]) if value else "7d"
@@ -123,13 +163,22 @@ class LecturerDashboardState(rx.State):
 
     @rx.var
     def active_trend_data(self) -> List[dict]:
-        return CHART_DATA_7D if self.time_range == "7d" else CHART_DATA_30D
+        return self.chart_data_7d if self.time_range == "7d" else self.chart_data_30d
 
     def refresh_metrics(self):
         return rx.toast.success("Đã đồng bộ dữ liệu thời gian thực mới nhất!")
 
     def export_report(self, format_type: str):
         return rx.toast.info(f"Đang tạo và tải xuống báo cáo tổng hợp định dạng {format_type}...")
+
+
+def pie_legend_item(item: Dict[str, Any]) -> rx.Component:
+    return rx.hstack(
+        rx.box(width="10px", height="10px", bg=item["fill"], border_radius="full"),
+        rx.text(f"{item['name']} ({item['value']})", size="1", color="slate.9"),
+        align="center",
+        spacing="1",
+    )
 
 
 # ─── UI Helper Components ────────────────────────────────────────────────────
@@ -426,7 +475,7 @@ def lecturer_dashboard_page() -> rx.Component:
                                 rx.recharts.y_axis(stroke="#94a3b8"),
                                 rx.recharts.cartesian_grid(stroke_dasharray="3 3", stroke="#e2e8f0"),
                                 rx.recharts.graphing_tooltip(),
-                                data=TOP_DOCS_DATA,
+                                data=LecturerDashboardState.top_docs_data,
                                 width="100%",
                                 height=220,
                             ),
@@ -451,7 +500,7 @@ def lecturer_dashboard_page() -> rx.Component:
                             rx.text("Tỷ lệ phân bổ theo danh mục tài liệu", size="1", color="slate.8"),
                             rx.recharts.pie_chart(
                                 rx.recharts.pie(
-                                    data=CATEGORY_PIE_DATA,
+                                    data=LecturerDashboardState.category_pie_data,
                                     data_key="value",
                                     name_key="name",
                                     cx="50%",
@@ -466,15 +515,10 @@ def lecturer_dashboard_page() -> rx.Component:
                             ),
                             # Chú thích màu sắc
                             rx.grid(
-                                *[
-                                    rx.hstack(
-                                        rx.box(width="10px", height="10px", bg=item["fill"], border_radius="full"),
-                                        rx.text(f"{item['name']} ({item['value']}%)", size="1", color="slate.9"),
-                                        align="center",
-                                        spacing="1",
-                                    )
-                                    for item in CATEGORY_PIE_DATA
-                                ],
+                                rx.foreach(
+                                    LecturerDashboardState.category_pie_data,
+                                    pie_legend_item,
+                                ),
                                 columns="2",
                                 spacing="2",
                                 width="100%",

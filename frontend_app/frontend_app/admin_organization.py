@@ -392,23 +392,46 @@ class OrgState(rx.State):
     def set_dept_form_desc(self, v: str):
         self.dept_form_desc = v
 
-    def save_department(self):
-        if not self.dept_form_code.strip() or not self.dept_form_name.strip():
-            self.dept_form_error = "Mã Khoa và Tên Khoa không được để trống."
+    async def save_department(self):
+        d_name = self.dept_form_name.strip()
+        if not d_name:
+            self.dept_form_error = "Tên Khoa không được để trống."
             return
-        existing = [d for d in self.departments if d.code == self.dept_form_code.strip().upper()]
-        if existing:
-            self.dept_form_error = f"Mã khoa '{self.dept_form_code}' đã tồn tại."
-            return
-        new_dept = Department(
-            id=f"d{len(self.departments)+1}",
-            code=self.dept_form_code.strip().upper(),
-            name=self.dept_form_name.strip(),
-            description=self.dept_form_desc.strip(),
-        )
-        self.departments.append(new_dept)
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+        created_ok = False
+        try:
+            import httpx
+            resp = httpx.post("http://127.0.0.1:8000/api/departments/", json={"department_name": d_name}, headers=headers, timeout=4.0)
+            if resp.status_code == 201:
+                created_ok = True
+            elif resp.status_code == 400:
+                self.dept_form_error = resp.json().get("message", "Lỗi tạo khoa.")
+                return
+        except Exception:
+            pass
+
+        if not created_ok:
+            try:
+                import os, sys, asyncio
+                def _create_dept_orm(name):
+                    from academics.models import Department as DjDept
+                    if DjDept.objects.filter(department_name__iexact=name).exists():
+                        return False, "Tên khoa đã tồn tại."
+                    DjDept.objects.create(department_name=name)
+                    return True, ""
+                ok, err = await asyncio.to_thread(_create_dept_orm, d_name)
+                if not ok:
+                    self.dept_form_error = err
+                    return
+            except Exception as e:
+                self.dept_form_error = f"Lỗi tạo khoa: {str(e)}"
+                return
+
         self.show_dept_modal = False
-        return rx.toast.success(f"Đã thêm Khoa '{self.dept_form_name}' thành công!")
+        self.load_data()
+        return rx.toast.success(f"Đã thêm Khoa '{d_name}' vào cơ sở dữ liệu thành công!")
 
     # ── Subject CRUD ──
     def open_subject_modal(self):
@@ -434,23 +457,53 @@ class OrgState(rx.State):
     def set_subj_credits(self, v: str):
         self.subj_form_credits = v
 
-    def save_subject(self):
-        if not self.subj_form_code.strip() or not self.subj_form_name.strip():
-            self.subj_form_error = "Mã môn và Tên môn không được để trống."
+    async def save_subject(self):
+        s_name = self.subj_form_name.strip()
+        if not s_name:
+            self.subj_form_error = "Tên môn không được để trống."
             return
-        dept = next((d for d in self.departments if d.code == self.subj_form_dept or d.name == self.subj_form_dept), None)
-        dept_name = dept.name if dept else self.subj_form_dept
-        new_subj = Subject(
-            id=f"s{len(self.subjects)+1}",
-            code=self.subj_form_code.strip().upper(),
-            name=self.subj_form_name.strip(),
-            department_code=self.subj_form_dept,
-            department_name=dept_name,
-            credits=int(self.subj_form_credits) if self.subj_form_credits.isdigit() else 3,
-        )
-        self.subjects.append(new_subj)
+        dept = next((d for d in self.departments if d.code == self.subj_form_dept or d.name == self.subj_form_dept or str(d.id) == self.subj_form_dept), None)
+        raw_did = dept.id.replace("d", "") if (dept and dept.id) else "1"
+        dept_id = int(raw_did) if raw_did.isdigit() else 1
+
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+        created_ok = False
+        try:
+            import httpx
+            resp = httpx.post("http://127.0.0.1:8000/api/subjects/", json={"subject_name": s_name, "department_id": dept_id}, headers=headers, timeout=4.0)
+            if resp.status_code == 201:
+                created_ok = True
+            elif resp.status_code == 400:
+                self.subj_form_error = resp.json().get("message", "Lỗi tạo môn học.")
+                return
+        except Exception:
+            pass
+
+        if not created_ok:
+            try:
+                import os, sys, asyncio
+                def _create_sub_orm(name, d_id):
+                    from academics.models import Subject as DjSub, Department as DjDept
+                    d_obj = DjDept.objects.filter(id=d_id).first()
+                    if not d_obj:
+                        return False, "Khoa không tồn tại."
+                    if DjSub.objects.filter(subject_name__iexact=name, department=d_obj).exists():
+                        return False, "Môn học đã tồn tại trong khoa này."
+                    DjSub.objects.create(subject_name=name, department=d_obj)
+                    return True, ""
+                ok, err = await asyncio.to_thread(_create_sub_orm, s_name, dept_id)
+                if not ok:
+                    self.subj_form_error = err
+                    return
+            except Exception as e:
+                self.subj_form_error = f"Lỗi tạo môn: {str(e)}"
+                return
+
         self.show_subject_modal = False
-        return rx.toast.success(f"Đã thêm môn học '{self.subj_form_name}' thành công!")
+        self.load_data()
+        return rx.toast.success(f"Đã thêm môn học '{s_name}' vào cơ sở dữ liệu thành công!")
 
     # ── Class CRUD ──
     def open_class_modal(self):
@@ -472,22 +525,53 @@ class OrgState(rx.State):
     def set_class_year(self, v: str):
         self.class_form_year = v
 
-    def save_class(self):
-        if not self.class_form_name.strip():
+    async def save_class(self):
+        c_name = self.class_form_name.strip()
+        if not c_name:
             self.class_form_error = "Tên lớp không được để trống."
             return
-        dept = next((d for d in self.departments if d.code == self.class_form_dept), None)
-        dept_name = dept.name if dept else self.class_form_dept
-        new_cls = StudentClass(
-            id=f"c{len(self.classes)+1}",
-            class_name=self.class_form_name.strip().upper(),
-            department_code=self.class_form_dept,
-            department_name=dept_name,
-            year=self.class_form_year,
-        )
-        self.classes.append(new_cls)
+        dept = next((d for d in self.departments if d.code == self.class_form_dept or d.name == self.class_form_dept or str(d.id) == self.class_form_dept), None)
+        raw_did = dept.id.replace("d", "") if (dept and dept.id) else "1"
+        dept_id = int(raw_did) if raw_did.isdigit() else 1
+
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+        created_ok = False
+        try:
+            import httpx
+            resp = httpx.post("http://127.0.0.1:8000/api/classes/", json={"class_name": c_name, "department_id": dept_id}, headers=headers, timeout=4.0)
+            if resp.status_code == 201:
+                created_ok = True
+            elif resp.status_code == 400:
+                self.class_form_error = resp.json().get("message", "Lỗi tạo lớp.")
+                return
+        except Exception:
+            pass
+
+        if not created_ok:
+            try:
+                import os, sys, asyncio
+                def _create_cls_orm(name, d_id):
+                    from academics.models import Class as DjCls, Department as DjDept
+                    d_obj = DjDept.objects.filter(id=d_id).first()
+                    if not d_obj:
+                        return False, "Khoa không tồn tại."
+                    if DjCls.objects.filter(class_name__iexact=name).exists():
+                        return False, "Tên lớp đã tồn tại."
+                    DjCls.objects.create(class_name=name, department=d_obj)
+                    return True, ""
+                ok, err = await asyncio.to_thread(_create_cls_orm, c_name, dept_id)
+                if not ok:
+                    self.class_form_error = err
+                    return
+            except Exception as e:
+                self.class_form_error = f"Lỗi tạo lớp: {str(e)}"
+                return
+
         self.show_class_modal = False
-        return rx.toast.success(f"Đã thêm lớp '{self.class_form_name}' thành công!")
+        self.load_data()
+        return rx.toast.success(f"Đã thêm lớp '{c_name}' vào cơ sở dữ liệu thành công!")
 
     # ── Folder CRUD ──
     def open_folder_modal(self):
@@ -582,15 +666,120 @@ class OrgState(rx.State):
     def cancel_delete(self):
         self.show_delete_dialog = False
 
-    def confirm_delete(self):
+    async def confirm_delete(self):
         name = self.delete_item_name
-        if self.delete_item_type == "dept":
-            self.departments = [d for d in self.departments if d.id != self.delete_item_id]
-        elif self.delete_item_type == "subject":
-            self.subjects = [s for s in self.subjects if s.id != self.delete_item_id]
-        elif self.delete_item_type == "class":
-            self.classes = [c for c in self.classes if c.id != self.delete_item_id]
-        elif self.delete_item_type == "folder":
+        item_type = self.delete_item_type
+        raw_id = "".join(filter(str.isdigit, str(self.delete_item_id)))
+        item_pk = int(raw_id) if raw_id else None
+
+        from .auth import AuthState
+        auth = await self.get_state(AuthState)
+        headers = {"Authorization": f"Bearer {auth.auth_token}"} if auth.auth_token else {}
+
+        if item_type == "dept":
+            err_msg = None
+            if item_pk:
+                try:
+                    import httpx
+                    resp = httpx.delete(f"http://127.0.0.1:8000/api/departments/{item_pk}/", headers=headers, timeout=4.0)
+                    if resp.status_code in (200, 204):
+                        self.show_delete_dialog = False
+                        self.load_data()
+                        return rx.toast.success(f"Đã xóa khoa '{name}' thành công!")
+                    elif resp.status_code == 400:
+                        err_msg = resp.json().get("message", "Không thể xóa khoa.")
+                except Exception:
+                    pass
+            try:
+                import asyncio
+                def _del_dept_orm(pk):
+                    from academics.models import Department, Subject, Class
+                    d = Department.objects.filter(id=pk).first()
+                    if not d:
+                        return False, "Khoa không tồn tại."
+                    if Subject.objects.filter(department=d).exists():
+                        return False, "Không thể xóa khoa vì đang có môn học thuộc khoa này."
+                    if Class.objects.filter(department=d).exists():
+                        return False, "Không thể xóa khoa vì đang có lớp học thuộc khoa này."
+                    d.delete()
+                    return True, ""
+                ok, err = await asyncio.to_thread(_del_dept_orm, item_pk)
+                if not ok:
+                    self.show_delete_dialog = False
+                    return rx.toast.error(err_msg or err)
+            except Exception as e:
+                self.show_delete_dialog = False
+                return rx.toast.error(err_msg or f"Lỗi xóa khoa: {str(e)}")
+
+        elif item_type == "subject":
+            err_msg = None
+            if item_pk:
+                try:
+                    import httpx
+                    resp = httpx.delete(f"http://127.0.0.1:8000/api/subjects/{item_pk}/", headers=headers, timeout=4.0)
+                    if resp.status_code in (200, 204):
+                        self.show_delete_dialog = False
+                        self.load_data()
+                        return rx.toast.success(f"Đã xóa môn học '{name}' thành công!")
+                    elif resp.status_code == 400:
+                        err_msg = resp.json().get("message", "Không thể xóa môn học.")
+                except Exception:
+                    pass
+            try:
+                import asyncio
+                def _del_subj_orm(pk):
+                    from academics.models import Subject
+                    from documents.models import Document
+                    s = Subject.objects.filter(id=pk).first()
+                    if not s:
+                        return False, "Môn học không tồn tại."
+                    if Document.objects.filter(subject=s).exists():
+                        return False, "Không thể xóa môn học vì đang có tài liệu liên kết."
+                    s.delete()
+                    return True, ""
+                ok, err = await asyncio.to_thread(_del_subj_orm, item_pk)
+                if not ok:
+                    self.show_delete_dialog = False
+                    return rx.toast.error(err_msg or err)
+            except Exception as e:
+                self.show_delete_dialog = False
+                return rx.toast.error(err_msg or f"Lỗi xóa môn: {str(e)}")
+
+        elif item_type == "class":
+            err_msg = None
+            if item_pk:
+                try:
+                    import httpx
+                    resp = httpx.delete(f"http://127.0.0.1:8000/api/classes/{item_pk}/", headers=headers, timeout=4.0)
+                    if resp.status_code in (200, 204):
+                        self.show_delete_dialog = False
+                        self.load_data()
+                        return rx.toast.success(f"Đã xóa lớp '{name}' thành công!")
+                    elif resp.status_code == 400:
+                        err_msg = resp.json().get("message", "Không thể xóa lớp.")
+                except Exception:
+                    pass
+            try:
+                import asyncio
+                def _del_class_orm(pk):
+                    from academics.models import Class
+                    from accounts.models import StudentProfile
+                    c = Class.objects.filter(id=pk).first()
+                    if not c:
+                        return False, "Lớp không tồn tại."
+                    if StudentProfile.objects.filter(student_class=c).exists():
+                        return False, "Không thể xóa lớp vì đang có sinh viên thuộc lớp này."
+                    c.delete()
+                    return True, ""
+                ok, err = await asyncio.to_thread(_del_class_orm, item_pk)
+                if not ok:
+                    self.show_delete_dialog = False
+                    return rx.toast.error(err_msg or err)
+            except Exception as e:
+                self.show_delete_dialog = False
+                return rx.toast.error(err_msg or f"Lỗi xóa lớp: {str(e)}")
+
+        elif item_type == "folder":
             try:
                 import httpx
                 httpx.delete(f"http://127.0.0.1:8000/api/folders/{self.delete_item_id}/", timeout=3.0)
@@ -600,8 +789,8 @@ class OrgState(rx.State):
                     DjFolder.objects.filter(id=self.delete_item_id).delete()
                 except Exception:
                     pass
-            self.folders = [f for f in self.folders if f.id != self.delete_item_id]
-        elif self.delete_item_type == "tag":
+
+        elif item_type == "tag":
             try:
                 import httpx
                 httpx.delete(f"http://127.0.0.1:8000/api/tags/{self.delete_item_id}/", timeout=3.0)
@@ -611,9 +800,9 @@ class OrgState(rx.State):
                     DjTag.objects.filter(id=self.delete_item_id).delete()
                 except Exception:
                     pass
-            self.tags = [t for t in self.tags if t.id != self.delete_item_id]
 
         self.show_delete_dialog = False
+        self.load_data()
         return rx.toast.success(f"Đã xóa '{name}' thành công!")
 
 

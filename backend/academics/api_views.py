@@ -85,6 +85,75 @@ def department_api(request):
     return _json_ok({'id': dept.id, 'department_name': dept.department_name}, message="Tạo khoa thành công.", status=201)
 
 
+@csrf_exempt
+@require_http_methods(["GET", "PATCH", "DELETE"])
+def department_detail_api(request, pk):
+    """
+    API Chi tiết, Sửa hoặc Xóa khoa:
+    - GET: Chi tiết khoa và danh sách môn học, lớp học trực thuộc
+    - PATCH: Cập nhật tên khoa
+    - DELETE: Xóa khoa khi không vi phạm ràng buộc dữ liệu (không có môn học, lớp học)
+    """
+    dept = get_object_or_404(Department, pk=pk)
+    user = request.user
+
+    if request.method == "GET":
+        subs = dept.subjects.all()
+        classes = dept.classes.all()
+        return _json_ok({
+            'id': dept.id,
+            'department_id': dept.id,
+            'department_name': dept.department_name,
+            'subject_count': subs.count(),
+            'class_count': classes.count(),
+            'subjects': [{'id': s.id, 'subject_name': s.subject_name} for s in subs],
+            'classes': [{'id': c.id, 'class_name': c.class_name, 'is_locked': c.is_locked} for c in classes],
+        })
+
+    if not (user.is_authenticated and getattr(user, 'is_admin', False)):
+        return _json_error("Chỉ Quản trị viên mới có quyền sửa/xóa Khoa.", 403)
+
+    if request.method == "PATCH":
+        data = {}
+        if request.body:
+            try:
+                data = json.loads(request.body.decode('utf-8'))
+            except Exception:
+                pass
+        if not data:
+            data = request.POST
+
+        name = data.get('department_name', '').strip()
+        if not name:
+            return _json_error("Tên khoa không được để trống.", 400)
+        if Department.objects.filter(department_name__iexact=name).exclude(pk=pk).exists():
+            return _json_error("Tên khoa đã tồn tại.", 400)
+
+        dept.department_name = name
+        dept.save(update_fields=['department_name'])
+        return _json_ok({
+            'id': dept.id,
+            'department_name': dept.department_name
+        }, message="Cập nhật tên khoa thành công.")
+
+    if request.method == "DELETE":
+        # Kiểm tra ràng buộc dữ liệu: Không xóa khoa đang có môn học hoặc lớp học
+        if dept.subjects.exists():
+            return _json_error(
+                f"Không thể xóa khoa '{dept.department_name}' vì đang có {dept.subjects.count()} môn học trực thuộc. Vui lòng di chuyển hoặc xóa các môn học trước.",
+                400
+            )
+        if dept.classes.exists():
+            return _json_error(
+                f"Không thể xóa khoa '{dept.department_name}' vì đang có {dept.classes.count()} lớp học trực thuộc. Vui lòng di chuyển hoặc xóa các lớp học trước.",
+                400
+            )
+        dept_id = dept.id
+        dept_name = dept.department_name
+        dept.delete()
+        return _json_ok({'deleted_department_id': dept_id}, message=f"Đã xóa khoa '{dept_name}' thành công.")
+
+
 # ─── CLASSES API ─────────────────────────────────────────────────────────────
 
 @csrf_exempt
@@ -171,6 +240,80 @@ def class_toggle_lock_api(request, pk):
     }, message=f"Đã {state_str} lớp {cls.class_name}.")
 
 
+@csrf_exempt
+@require_http_methods(["GET", "PATCH", "DELETE"])
+def class_detail_api(request, pk):
+    """
+    API Chi tiết, Sửa hoặc Xóa lớp:
+    - GET: Chi tiết lớp
+    - PATCH: Cập nhật tên lớp, khoa quản lý
+    - DELETE: Xóa lớp khi không có sinh viên
+    """
+    cls = get_object_or_404(Class.objects.select_related('department'), pk=pk)
+    user = request.user
+
+    if request.method == "GET":
+        from accounts.models import User as DjUser
+        student_count = DjUser.objects.filter(student_class=cls).count()
+        return _json_ok({
+            'id': cls.id,
+            'class_id': cls.id,
+            'class_name': cls.class_name,
+            'department_id': cls.department_id,
+            'department_name': cls.department.department_name if cls.department else '',
+            'is_locked': cls.is_locked,
+            'student_count': student_count,
+        })
+
+    if not (user.is_authenticated and getattr(user, 'is_admin', False)):
+        return _json_error("Chỉ Quản trị viên mới có quyền sửa/xóa Lớp.", 403)
+
+    if request.method == "PATCH":
+        data = {}
+        if request.body:
+            try:
+                data = json.loads(request.body.decode('utf-8'))
+            except Exception:
+                pass
+        if not data:
+            data = request.POST
+
+        name = data.get('class_name', '').strip()
+        dept_id = data.get('department_id')
+        if name:
+            if Class.objects.filter(class_name__iexact=name).exclude(pk=pk).exists():
+                return _json_error("Tên lớp đã tồn tại.", 400)
+            cls.class_name = name
+
+        if dept_id:
+            try:
+                dept = Department.objects.get(pk=dept_id)
+                cls.department = dept
+            except Department.DoesNotExist:
+                return _json_error("Khoa không tồn tại.", 404)
+
+        cls.save()
+        return _json_ok({
+            'id': cls.id,
+            'class_name': cls.class_name,
+            'department_id': cls.department_id,
+            'department_name': cls.department.department_name if cls.department else '',
+            'is_locked': cls.is_locked,
+        }, message="Cập nhật lớp học thành công.")
+
+    if request.method == "DELETE":
+        from accounts.models import User as DjUser
+        if DjUser.objects.filter(student_class=cls).exists():
+            return _json_error(
+                f"Không thể xóa lớp '{cls.class_name}' vì đang có sinh viên thuộc lớp này. Vui lòng chuyển sinh viên sang lớp khác trước.",
+                400
+            )
+        class_id = cls.id
+        class_name = cls.class_name
+        cls.delete()
+        return _json_ok({'deleted_class_id': class_id}, message=f"Đã xóa lớp '{class_name}' thành công.")
+
+
 # ─── SUBJECTS API ────────────────────────────────────────────────────────────
 
 @csrf_exempt
@@ -232,6 +375,80 @@ def subject_api(request):
         'department_id': dept.id,
         'department_name': dept.department_name,
     }, message="Tạo môn học thành công.", status=201)
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PATCH", "DELETE"])
+def subject_detail_api(request, pk):
+    """
+    API Chi tiết, Sửa hoặc Xóa môn học:
+    - GET: Chi tiết môn học, danh sách thư mục, số lượng tài liệu
+    - PATCH: Cập nhật tên môn, khoa quản lý
+    - DELETE: Xóa môn học khi không vi phạm ràng buộc (không có tài liệu)
+    """
+    sub = get_object_or_404(Subject.objects.select_related('department'), pk=pk)
+    user = request.user
+
+    if request.method == "GET":
+        doc_count = sub.documents.count()
+        folders_count = sub.folders.count()
+        return _json_ok({
+            'id': sub.id,
+            'subject_id': sub.id,
+            'subject_name': sub.subject_name,
+            'department_id': sub.department_id,
+            'department_name': sub.department.department_name if sub.department else '',
+            'doc_count': doc_count,
+            'folders_count': folders_count,
+        })
+
+    if not (user.is_authenticated and getattr(user, 'is_admin', False)):
+        return _json_error("Chỉ Quản trị viên mới có quyền sửa/xóa môn học.", 403)
+
+    if request.method == "PATCH":
+        data = {}
+        if request.body:
+            try:
+                data = json.loads(request.body.decode('utf-8'))
+            except Exception:
+                pass
+        if not data:
+            data = request.POST
+
+        name = data.get('subject_name', '').strip()
+        dept_id = data.get('department_id')
+
+        if dept_id:
+            try:
+                dept = Department.objects.get(pk=dept_id)
+                sub.department = dept
+            except Department.DoesNotExist:
+                return _json_error("Khoa không tồn tại.", 404)
+
+        if name:
+            if Subject.objects.filter(subject_name__iexact=name, department=sub.department).exclude(pk=pk).exists():
+                return _json_error(f"Môn học '{name}' đã tồn tại trong khoa này.", 400)
+            sub.subject_name = name
+
+        sub.save()
+        return _json_ok({
+            'id': sub.id,
+            'subject_name': sub.subject_name,
+            'department_id': sub.department_id,
+            'department_name': sub.department.department_name if sub.department else '',
+        }, message="Cập nhật môn học thành công.")
+
+    if request.method == "DELETE":
+        doc_count = sub.documents.count()
+        if doc_count > 0:
+            return _json_error(
+                f"Không thể xóa môn học '{sub.subject_name}' vì đang chứa {doc_count} tài liệu. Vui lòng di chuyển hoặc xóa tài liệu trước.",
+                400
+            )
+        sub_id = sub.id
+        sub_name = sub.subject_name
+        sub.delete()
+        return _json_ok({'deleted_subject_id': sub_id}, message=f"Đã xóa môn học '{sub_name}' thành công.")
 
 
 # ─── CÂY THƯ MỤC (FOLDER TREE) API ──────────────────────────────────────────

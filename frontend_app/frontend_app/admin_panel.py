@@ -74,11 +74,11 @@ class AdminUserState(rx.State):
     detail_user: AdminUser = AdminUser()
 
     # System & Indexing stats
-    total_docs: int = 29
-    total_folders: int = 13
-    total_tags: int = 11
-    indexing_rate: str = "100%"
-    total_chunks: int = 31
+    total_docs: int = 0
+    total_folders: int = 0
+    total_tags: int = 0
+    indexing_rate: str = "0%"
+    total_chunks: int = 0
 
     def run_all_indexing(self):
         try:
@@ -135,12 +135,12 @@ class AdminUserState(rx.State):
                     r_stats = httpx.get("http://127.0.0.1:8000/api/dashboard/stats/", timeout=3.0)
                     if r_stats.status_code == 200:
                         s_data = r_stats.json().get("stats", {})
-                        self.total_docs = int(s_data.get("total_documents", 29))
-                        self.total_folders = int(s_data.get("total_folders", 13))
-                        self.total_tags = int(s_data.get("total_tags", 11))
+                        self.total_docs = int(s_data.get("total_documents", 0))
+                        self.total_folders = int(s_data.get("total_folders", 0))
+                        self.total_tags = int(s_data.get("total_tags", 0))
                         idx_data = s_data.get("indexing", {})
-                        self.indexing_rate = f"{idx_data.get('indexing_percentage', 100)}%"
-                        self.total_chunks = int(idx_data.get("total_chunks", 31))
+                        self.indexing_rate = f"{idx_data.get('indexing_percentage', 0)}%"
+                        self.total_chunks = int(idx_data.get("total_chunks", 0))
                 except Exception:
                     pass
                 return
@@ -156,6 +156,15 @@ class AdminUserState(rx.State):
             import django
             django.setup()
             from accounts.models import User
+            from documents.models import Document, Folder, Tag
+            from ai_search.models import DocumentEmbedding
+
+            self.total_docs = Document.objects.count()
+            self.total_folders = Folder.objects.count()
+            self.total_tags = Tag.objects.count()
+            self.total_chunks = DocumentEmbedding.objects.count()
+            self.indexing_rate = "100%" if self.total_docs > 0 else "0%"
+
             qs = User.objects.select_related('role', 'department', 'student_class').order_by('id')
             loaded = []
             for u in qs:
