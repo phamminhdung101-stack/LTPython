@@ -15,7 +15,7 @@ try:
 except Exception:
     pass
 
-SECRET_KEY = 'django-insecure-c&^g(wp7@krvcx7r=-5nczx(6ays5kx$(x(jup^u3bkm7-$^z('
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-c&^g(wp7@krvcx7r=-5nczx(6ays5kx$(x(jup^u3bkm7-$^z(')
 
 DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
 

@@ -150,6 +150,75 @@ def login_api(request):
 
 @csrf_exempt
 @require_http_methods(["POST"])
+def register_api(request):
+    """
+    API Đăng ký tài khoản mới (lưu trực tiếp vào PostgreSQL).
+    Mặc định cấp vai trò STUDENT để đảm bảo an toàn phân quyền RBAC.
+    """
+    data = request.POST
+    if not data:
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+        except Exception:
+            data = {}
+
+    username = (data.get('username') or '').strip()
+    full_name = (data.get('full_name') or '').strip()
+    email = (data.get('email') or '').strip()
+    password = data.get('password') or ''
+    dept_id = data.get('department_id')
+    class_id = data.get('class_id')
+
+    if not full_name:
+        return _json_error("Họ tên không được để trống.", 400)
+    if len(username) < 4:
+        return _json_error("Tên đăng nhập phải có ít nhất 4 ký tự.", 400)
+    if len(password) < 6:
+        return _json_error("Mật khẩu phải có ít nhất 6 ký tự.", 400)
+    if email and '@' not in email:
+        return _json_error("Email không đúng định dạng.", 400)
+
+    if User.objects.filter(username__iexact=username).exists():
+        return _json_error(f"Tên đăng nhập '{username}' đã tồn tại.", 400)
+
+    student_role, _ = Role.objects.get_or_create(role_name=Role.STUDENT)
+    dept = Department.objects.filter(pk=dept_id).first() if dept_id else None
+    student_class = Class.objects.filter(pk=class_id).first() if class_id else None
+
+    user = User.objects.create_user(
+        username=username,
+        full_name=full_name,
+        role=student_role,
+        password=password,
+        email=email,
+        department=dept,
+        student_class=student_class,
+        is_active=True,
+    )
+
+    from .authentication import generate_jwt_token
+    token = generate_jwt_token(user)
+
+    user_payload = {
+        'user_id': user.id,
+        'username': user.username,
+        'full_name': user.full_name,
+        'email': user.email,
+        'role': user.role_name,
+        'role_name': user.role_name,
+        'department_id': user.department_id,
+        'department_name': dept.department_name if dept else None,
+        'class_id': user.student_class_id,
+        'class_name': student_class.class_name if student_class else None,
+    }
+    return _json_ok({
+        'user': user_payload,
+        'token': token,
+    }, message=f"Đã tạo tài khoản '{user.username}' thành công!", status=201)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
 def logout_api(request):
     logout(request)
     return _json_ok(message="Đã đăng xuất thành công.")
@@ -165,9 +234,12 @@ def current_user_api(request):
         'user_id': user.id,
         'username': user.username,
         'full_name': user.full_name,
+        'email': getattr(user, 'email', '') or '',
         'role': user.role_name,
         'role_name': user.role_name,
+        'department_id': user.department_id,
         'department_name': user.department.department_name if user.department else None,
+        'class_id': user.student_class_id,
         'class_name': user.student_class.class_name if user.student_class else None,
     }
     payload = {
@@ -212,6 +284,7 @@ def user_api(request):
             'id': u.id,
             'username': u.username,
             'full_name': u.full_name,
+            'email': getattr(u, 'email', '') or '',
             'role': u.role_name,
             'role_name': u.role_name,
             'department_id': u.department_id,
@@ -253,13 +326,19 @@ def user_api(request):
 
     username = data.get('username', '').strip()
     full_name = data.get('full_name', '').strip()
+    email = data.get('email', '').strip()
     password = data.get('password', '').strip() or '123456'
     role_name = (data.get('role') or 'STUDENT').upper()
     dept_id = data.get('department_id')
     class_id = data.get('class_id')
+    is_active = data.get('is_active', True)
+    if isinstance(is_active, str):
+        is_active = is_active.lower() in ('true', '1', 'yes')
 
     if not username or not full_name:
         return _json_error("Vui lòng nhập 'username' và 'full_name'.", 400)
+    if role_name not in (Role.ADMIN, Role.LECTURER, Role.STUDENT):
+        return _json_error("Vai trò không hợp lệ. Chỉ chấp nhận ADMIN, LECTURER hoặc STUDENT.", 400)
 
     if User.objects.filter(username__iexact=username).exists():
         return _json_error(f"Username '{username}' đã được sử dụng.", 400)
@@ -267,23 +346,29 @@ def user_api(request):
     role, _ = Role.objects.get_or_create(role_name=role_name)
     dept = Department.objects.filter(pk=dept_id).first() if dept_id else None
     student_class = Class.objects.filter(pk=class_id).first() if class_id else None
+    if student_class and dept and student_class.department_id != dept.id:
+        return _json_error(f"Lớp '{student_class.class_name}' không thuộc khoa '{dept.department_name}'.", 400)
 
     user = User.objects.create_user(
         username=username,
         full_name=full_name,
         role=role,
         password=password,
+        email=email,
         department=dept,
         student_class=student_class,
+        is_active=bool(is_active),
     )
 
     return _json_ok({
         'user_id': user.id,
         'username': user.username,
         'full_name': user.full_name,
+        'email': user.email,
         'role': user.role_name,
         'department_name': dept.department_name if dept else None,
         'class_name': student_class.class_name if student_class else None,
+        'is_active': user.is_active,
     }, message=f"Đã tạo người dùng '{user.full_name}' thành công.", status=201)
 
 
@@ -292,6 +377,12 @@ def user_api(request):
 def user_detail_api(request, pk):
     target_user = get_object_or_404(User, pk=pk)
     user = _get_authenticated_user(request)
+    if not (user and user.is_authenticated):
+        return _json_error("Vui lòng đăng nhập để thực hiện thao tác này.", 401)
+
+    is_admin = getattr(user, 'is_admin', False)
+    if not is_admin and user.id != target_user.id:
+        return _json_error("Bạn không có quyền truy cập thông tin người dùng này.", 403)
 
     if request.method in ("PATCH", "PUT"):
         data = {}
@@ -304,7 +395,6 @@ def user_detail_api(request, pk):
             data = request.POST
 
         # Chỉ Admin mới được phép đổi vai trò, khoa, lớp, trạng thái
-        is_admin = user and getattr(user, 'is_admin', False)
         if is_admin:
             if 'role_id' in data and data['role_id']:
                 target_user.role_id = data['role_id']
@@ -319,10 +409,15 @@ def user_detail_api(request, pk):
             if 'is_active' in data:
                 target_user.is_active = bool(data['is_active'])
 
-        if 'full_name' in data and (is_admin or (user and user.id == target_user.id)):
+        if 'full_name' in data and (is_admin or user.id == target_user.id):
             target_user.full_name = data['full_name']
-        if 'email' in data and (is_admin or (user and user.id == target_user.id)):
+        if 'email' in data and (is_admin or user.id == target_user.id):
             target_user.email = data['email']
+        if data.get('password') and str(data.get('password')).strip() and (is_admin or user.id == target_user.id):
+            new_pwd = str(data.get('password')).strip()
+            if len(new_pwd) < 6:
+                return _json_error("Mật khẩu mới phải có ít nhất 6 ký tự.", 400)
+            target_user.set_password(new_pwd)
         target_user.save()
         return _json_ok({
             'user_id': target_user.id,

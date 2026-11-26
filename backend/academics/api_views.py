@@ -14,7 +14,8 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
-from django.db.models import Count
+from django.db import IntegrityError
+from django.db.models import Count, Q
 
 from .models import Department, Class, Subject
 from documents.models import Folder
@@ -67,6 +68,8 @@ def department_api(request):
         depts = Department.objects.annotate(
             class_count=Count('classes', distinct=True),
             subject_count=Count('subjects', distinct=True),
+            lecturer_count=Count('users', filter=Q(users__role__role_name='LECTURER'), distinct=True),
+            student_count=Count('users', filter=Q(users__role__role_name='STUDENT'), distinct=True),
         ).order_by('department_name')
         data = [{
             'id': d.id,
@@ -74,6 +77,8 @@ def department_api(request):
             'department_name': d.department_name,
             'class_count': d.class_count,
             'subject_count': d.subject_count,
+            'lecturer_count': d.lecturer_count,
+            'student_count': d.student_count,
         } for d in depts]
         return JsonResponse({
             'status': 'ok',
@@ -130,7 +135,7 @@ def department_detail_api(request, pk):
             'classes': [{'id': c.id, 'class_name': c.class_name, 'is_locked': c.is_locked} for c in classes],
         })
 
-    if not (user.is_authenticated and getattr(user, 'is_admin', False)):
+    if not (user and user.is_authenticated and getattr(user, 'is_admin', False)):
         return _json_error("Chỉ Quản trị viên mới có quyền sửa/xóa Khoa.", 403)
 
     if request.method == "PATCH":
@@ -181,7 +186,9 @@ def department_detail_api(request, pk):
 def class_api(request):
     if request.method == "GET":
         dept_id = request.GET.get('department_id')
-        qs = Class.objects.select_related('department').order_by('class_name')
+        qs = Class.objects.select_related('department').annotate(
+            student_count=Count('students', distinct=True)
+        ).order_by('class_name')
         if dept_id:
             qs = qs.filter(department_id=dept_id)
 
@@ -195,6 +202,7 @@ def class_api(request):
                 'department_id': c.department_id,
                 'department_name': c.department.department_name if c.department else '',
             } if c.department else {},
+            'student_count': getattr(c, 'student_count', 0),
             'is_locked': c.is_locked,
         } for c in qs]
         return JsonResponse({
@@ -287,7 +295,7 @@ def class_detail_api(request, pk):
             'student_count': student_count,
         })
 
-    if not (user.is_authenticated and getattr(user, 'is_admin', False)):
+    if not (user and user.is_authenticated and getattr(user, 'is_admin', False)):
         return _json_error("Chỉ Quản trị viên mới có quyền sửa/xóa Lớp.", 403)
 
     if request.method == "PATCH":
@@ -427,7 +435,7 @@ def subject_detail_api(request, pk):
             'folders_count': folders_count,
         })
 
-    if not (user.is_authenticated and getattr(user, 'is_admin', False)):
+    if not (user and user.is_authenticated and getattr(user, 'is_admin', False)):
         return _json_error("Chỉ Quản trị viên mới có quyền sửa/xóa môn học.", 403)
 
     if request.method == "PATCH":
@@ -542,20 +550,20 @@ def folder_api(request):
         return res
 
     # POST: Tạo thư mục hoặc thư mục con
-    user = request.user
-    if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
+    user = _get_authenticated_user(request)
+    if not (user and user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
         return _json_error("Chỉ Quản trị viên hoặc Giảng viên mới có quyền tạo thư mục.", 403)
 
     name = request.POST.get('folder_name', '').strip()
     subject_id = request.POST.get('subject_id')
-    parent_id = request.POST.get('parent_folder_id')
+    parent_id = request.POST.get('parent_folder_id') or request.POST.get('parent_id')
 
     if not name or not subject_id:
         try:
             body = json.loads(request.body.decode('utf-8'))
-            name = body.get('folder_name', '').strip()
+            name = (body.get('folder_name') or '').strip()
             subject_id = body.get('subject_id')
-            parent_id = body.get('parent_folder_id')
+            parent_id = body.get('parent_folder_id') if 'parent_folder_id' in body else body.get('parent_id')
         except Exception:
             pass
 
@@ -566,6 +574,12 @@ def folder_api(request):
 
     try:
         folder = create_folder(name, int(subject_id), int(parent_id) if parent_id else None, user=user)
+    except Subject.DoesNotExist:
+        return _json_error("Môn học không tồn tại.", 404)
+    except Folder.DoesNotExist:
+        return _json_error("Thư mục cha không tồn tại.", 404)
+    except IntegrityError:
+        return _json_error(f"Thư mục '{name}' đã tồn tại trong môn học/thư mục cha này.", 400)
     except Exception as e:
         return _json_error(str(e), 400)
 
@@ -595,7 +609,7 @@ def folder_detail_api(request, pk):
         Folder.objects.select_related('subject', 'parent_folder'),
         pk=pk
     )
-    user = request.user
+    user = _get_authenticated_user(request)
 
     if request.method == "GET":
         docs = folder.documents.select_related('uploader', 'subject')
@@ -634,7 +648,7 @@ def folder_detail_api(request, pk):
         })
 
     # Quyền sửa / xóa: Yêu cầu Admin hoặc Giảng viên
-    if not (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
+    if not (user and user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False))):
         return _json_error("Chỉ Quản trị viên hoặc Giảng viên mới có quyền chỉnh sửa/xóa thư mục.", 403)
 
     if request.method == "PATCH":

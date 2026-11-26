@@ -68,8 +68,7 @@ pip install -r backend\requirements.txt
 ```powershell
 cd d:\document_knowledge_base
 .\venv\Scripts\Activate.ps1
-cách 1:python backend\manage.py runserver 127.0.0.1:8000
-cách 2:D:\document_knowledge_base\run_backend.bat
+python backend\manage.py runserver 127.0.0.1:8000
 ```
 - **Backend API**: `http://127.0.0.1:8000/api/`
 - **Health Check**: `http://127.0.0.1:8000/api/health/`
@@ -78,10 +77,7 @@ cách 2:D:\document_knowledge_base\run_backend.bat
 ```powershell
 cd d:\document_knowledge_base\frontend_app
 ..\venv\Scripts\Activate.ps1
-cách 1:reflex run
-cách 2:D:\document_knowledge_base\run_frontend.bat
-cách 3:cd /d D:\document_knowledge_base\frontend_app
-reflex run --backend-port 8001
+python -m reflex run --backend-port 8001
 ```
 - **Giao diện Web**: [http://localhost:3000](http://localhost:3000)
 

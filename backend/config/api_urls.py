@@ -9,6 +9,7 @@ from django.urls import path
 from accounts.api_views import (
     health_api,
     login_api,
+    register_api,
     logout_api,
     current_user_api,
     user_api,
@@ -89,6 +90,7 @@ urlpatterns = [
 
     # ── 1. Auth & Users ──
     path('auth/login/', login_api, name='api_login'),
+    path('auth/register/', register_api, name='api_register'),
     path('auth/logout/', logout_api, name='api_logout'),
     path('auth/me/', current_user_api, name='api_current_user'),
     path('users/', user_api, name='api_users'),

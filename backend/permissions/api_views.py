@@ -34,11 +34,30 @@ def _json_ok(data=None, message: str = 'Thành công', status: int = 200) -> Jso
     return JsonResponse(payload, status=status, json_dumps_params={'ensure_ascii': False})
 
 
+def _get_authenticated_user(request):
+    auth_header = request.headers.get('Authorization') or request.META.get('HTTP_AUTHORIZATION')
+    has_token = (auth_header and 'Bearer' in auth_header) or (hasattr(request, 'GET') and 'token' in request.GET)
+    if has_token:
+        try:
+            from accounts.authentication import JWTAuthentication
+            jwt_auth = JWTAuthentication()
+            auth_res = jwt_auth.authenticate(request)
+            if auth_res:
+                request.user = auth_res[0]
+                return auth_res[0]
+        except Exception:
+            pass
+    user = getattr(request, 'user', None)
+    if user and user.is_authenticated:
+        return user
+    return None
+
+
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def document_permissions_api(request, doc_id):
     doc = get_object_or_404(Document, pk=doc_id)
-    user = request.user
+    user = _get_authenticated_user(request)
 
     # GET: Xem danh sách phân quyền
     if request.method == "GET":
@@ -62,6 +81,7 @@ def document_permissions_api(request, doc_id):
                 'user_id': p.user_id,
                 'can_view': p.can_view,
                 'can_download': p.can_download,
+                'can_edit': p.can_edit,
                 'created_at': p.created_at.strftime('%Y-%m-%d %H:%M'),
             })
 
@@ -73,8 +93,8 @@ def document_permissions_api(request, doc_id):
         })
 
     # POST: Thêm phân quyền mới (Chỉ Tác giả, Giảng viên hoặc Admin)
-    is_owner = (user.is_authenticated and doc.uploader_id == user.id)
-    is_staff = (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False)))
+    is_owner = bool(user and user.is_authenticated and doc.uploader_id == user.id)
+    is_staff = bool(user and user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False)))
     if not (is_owner or is_staff):
         return _json_error("Bạn không có quyền cấu hình phân quyền cho tài liệu này.", 403)
 
@@ -91,6 +111,7 @@ def document_permissions_api(request, doc_id):
 
     can_view = str(data.get('can_view', 'true')).lower() in ('true', '1', 'yes')
     can_download = str(data.get('can_download', 'true')).lower() in ('true', '1', 'yes')
+    can_edit = str(data.get('can_edit', 'false')).lower() in ('true', '1', 'yes')
 
     student_class = None
     department = None
@@ -98,16 +119,28 @@ def document_permissions_api(request, doc_id):
 
     if perm_type == DocumentPermission.CLASS:
         class_id = data.get('class_id')
-        if not class_id:
-            return _json_error("Vui lòng cung cấp 'class_id'.", 400)
-        student_class = get_object_or_404(Class, pk=class_id)
+        class_name = (data.get('class_name') or data.get('target_name') or '').replace('Lớp ', '').strip()
+        if class_id:
+            student_class = get_object_or_404(Class, pk=class_id)
+        elif class_name:
+            student_class = Class.objects.filter(class_name__iexact=class_name).first()
+            if not student_class:
+                return _json_error(f"Không tìm thấy lớp '{class_name}'.", 404)
+        else:
+            return _json_error("Vui lòng cung cấp 'class_id' hoặc 'class_name'.", 400)
         target_desc = f"Lớp {student_class.class_name}"
 
     elif perm_type == DocumentPermission.DEPARTMENT:
         dept_id = data.get('department_id')
-        if not dept_id:
-            return _json_error("Vui lòng cung cấp 'department_id'.", 400)
-        department = get_object_or_404(Department, pk=dept_id)
+        dept_name = (data.get('department_name') or data.get('target_name') or '').replace('Khoa ', '').strip()
+        if dept_id:
+            department = get_object_or_404(Department, pk=dept_id)
+        elif dept_name:
+            department = Department.objects.filter(department_name__iexact=dept_name).first()
+            if not department:
+                return _json_error(f"Không tìm thấy khoa '{dept_name}'.", 404)
+        else:
+            return _json_error("Vui lòng cung cấp 'department_id' hoặc 'department_name'.", 400)
         target_desc = f"Khoa {department.department_name}"
 
     elif perm_type == DocumentPermission.USER:
@@ -117,14 +150,17 @@ def document_permissions_api(request, doc_id):
         target_user = get_object_or_404(User, pk=target_uid)
         target_desc = f"Người dùng {target_user.full_name}"
 
-    perm = DocumentPermission.objects.create(
-        document=doc,
-        permission_type=perm_type,
-        student_class=student_class,
-        department=department,
-        user=target_user,
-        can_view=can_view,
-        can_download=can_download,
+    lookup = {'document': doc, 'permission_type': perm_type}
+    if student_class:
+        lookup['student_class'] = student_class
+    elif department:
+        lookup['department'] = department
+    elif target_user:
+        lookup['user'] = target_user
+
+    perm, _created = DocumentPermission.objects.update_or_create(
+        **lookup,
+        defaults={'can_view': can_view, 'can_download': can_download, 'can_edit': can_edit},
     )
 
     # Ghi log hoạt động
@@ -132,7 +168,7 @@ def document_permissions_api(request, doc_id):
         document=doc,
         user=user,
         action='CHANGE_PERMISSION',
-        description=f"Cấp quyền truy cập ({'Xem' if can_view else ''}{'+ Tải' if can_download else ''}) cho {target_desc}.",
+        description=f"Cấp quyền truy cập ({'Xem' if can_view else ''}{'+ Tải' if can_download else ''}{'+ Sửa' if can_edit else ''}) cho {target_desc}.",
     )
 
     return _json_ok({
@@ -141,6 +177,7 @@ def document_permissions_api(request, doc_id):
         'target_desc': target_desc,
         'can_view': perm.can_view,
         'can_download': perm.can_download,
+        'can_edit': perm.can_edit,
     }, message=f"Đã thêm quyền cho {target_desc}.", status=201)
 
 
@@ -149,10 +186,10 @@ def document_permissions_api(request, doc_id):
 def delete_permission_api(request, doc_id, perm_id):
     """Xóa một quyền truy cập."""
     doc = get_object_or_404(Document, pk=doc_id)
-    user = request.user
+    user = _get_authenticated_user(request)
 
-    is_owner = (user.is_authenticated and doc.uploader_id == user.id)
-    is_staff = (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False)))
+    is_owner = bool(user and user.is_authenticated and doc.uploader_id == user.id)
+    is_staff = bool(user and user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False)))
     if not (is_owner or is_staff):
         return _json_error("Bạn không có quyền xóa phân quyền của tài liệu này.", 403)
 
@@ -173,7 +210,7 @@ def delete_permission_api(request, doc_id, perm_id):
 def check_document_access_api(request, doc_id):
     """Kiểm tra quyền truy cập của người dùng với tài liệu."""
     doc = get_object_or_404(Document, pk=doc_id)
-    user = request.user
+    user = _get_authenticated_user(request)
 
     can_view, view_reason = can_user_access_document(user, doc)
     can_download, dl_reason = can_user_download_document(user, doc)

@@ -44,10 +44,12 @@ class DownloadFileResponse(FileResponse):
 
 from .models import Document, DocumentVersion, DocumentActivityLog, Folder, Tag
 from academics.models import Subject
+from accounts.models import User
 from .validators import validate_file_upload
 from .r2_service import r2_service
+from .storage_service import LocalDocumentStorageService, resolve_document_file_path
 from permissions.services import can_user_access_document, can_user_download_document
-from .indexing_service import index_document, get_indexing_stats
+from .indexing_service import index_document, get_indexing_stats, extract_text_with_status
 
 
 def _json_error(message: str, status: int = 400, errors=None) -> JsonResponse:
@@ -100,9 +102,11 @@ def upload_document_api(request):
     - Lưu metadata, SHA-256 và object key vào PostgreSQL
     - Ghi nhận nhật ký CREATE
     """
-    user = request.user if (request.user and request.user.is_authenticated) else None
-    if not user:
+    user = _get_authenticated_user(request)
+    if not (user and user.is_authenticated):
         return _json_error("Vui lòng đăng nhập để tải lên tài liệu.", 401)
+    if not user.is_active or (user.student_class and getattr(user.student_class, 'is_locked', False)):
+        return _json_error("Tài khoản hoặc lớp học của bạn đang bị khóa.", 403)
 
     # 1. Lấy và kiểm tra file
     file_obj = request.FILES.get('file')
@@ -280,17 +284,10 @@ def download_document_api(request, pk):
     if '..' in clean_key:
         return _json_error("Phát hiện đường dẫn không an toàn (Path Traversal).", 400)
 
-    from .storage_service import LocalDocumentStorageService
-    storage_svc = LocalDocumentStorageService()
     try:
-        abs_path = storage_svc.get_absolute_path(clean_key)
+        abs_path = resolve_document_file_path(clean_key)
     except (SuspiciousFileOperation, ValueError):
         return _json_error("Phát hiện đường dẫn không an toàn (Path Traversal).", 400)
-
-    if not (abs_path and abs_path.exists() and abs_path.is_file()):
-        direct = (Path(settings.MEDIA_ROOT) / clean_key.lstrip('/')).resolve()
-        if direct.exists() and direct.is_file():
-            abs_path = direct
 
     # 3. Tăng lượt tải & ghi log
     Document.objects.filter(pk=pk).update(download_count=doc.download_count + 1)
@@ -364,23 +361,28 @@ def delete_document_api(request, pk):
     - Ghi nhận nhật ký DELETE
     """
     doc = get_object_or_404(Document, pk=pk)
-    user = request.user
+    user = _get_authenticated_user(request)
 
     # Kiểm tra quyền xóa
-    is_owner = (user.is_authenticated and doc.uploader_id == user.id)
-    is_staff = (user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False)))
+    is_owner = bool(user and user.is_authenticated and doc.uploader_id == user.id)
+    is_staff = bool(user and user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'is_lecturer', False)))
 
     if not (is_owner or is_staff):
         return _json_error("Bạn không có quyền xóa tài liệu này.", 403)
 
-    # Thu thập danh sách object key cần xóa trên R2
+    # Thu thập danh sách object key cần xóa trên R2 / local storage
     object_keys = list(doc.versions.values_list('file', flat=True))
 
     with transaction.atomic():
-        # Xóa các file trên R2
         for key in object_keys:
             if key:
                 r2_service.delete_file(key)
+                try:
+                    alt_path = resolve_document_file_path(key)
+                    if alt_path and alt_path.exists():
+                        alt_path.unlink()
+                except Exception:
+                    pass
 
         title = doc.title
         doc_id = doc.id

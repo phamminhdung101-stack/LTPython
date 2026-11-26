@@ -232,3 +232,30 @@ class LocalDocumentStorageService:
 
         return False
 
+
+def resolve_document_file_path(raw_key: str) -> Optional[Path]:
+    """
+    Tìm đường dẫn tuyệt đối an toàn cho object_key / file_path trong MEDIA_ROOT
+    hoặc thư mục backend/media cũ. Chống Path Traversal.
+    """
+    if not raw_key:
+        return None
+    clean_key = str(raw_key).strip().replace('\\', '/')
+    if '..' in clean_key:
+        raise SuspiciousFileOperation('Phát hiện đường dẫn không an toàn (Path Traversal).')
+
+    rel_key = clean_key.lstrip('/')
+    candidate_roots = [
+        Path(settings.MEDIA_ROOT).resolve(),
+        (Path(settings.BASE_DIR) / 'media').resolve(),
+    ]
+    for root in candidate_roots:
+        try:
+            candidate = (root / rel_key).resolve()
+            candidate.relative_to(root)
+            if candidate.exists() and candidate.is_file():
+                return candidate
+        except (ValueError, OSError):
+            continue
+    return None
+
