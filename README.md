@@ -80,6 +80,8 @@ cd d:\document_knowledge_base\frontend_app
 ..\venv\Scripts\Activate.ps1
 cách 1:reflex run
 cách 2:D:\document_knowledge_base\run_frontend.bat
+cách 3:cd /d D:\document_knowledge_base\frontend_app
+reflex run --backend-port 8001
 ```
 - **Giao diện Web**: [http://localhost:3000](http://localhost:3000)
 
